@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 import misaka
 import youtube, bitchute, rumble, dailymotion
 from tornado import gen, httputil, ioloop, iostream, process, web
+import log_output
 
 __version__ = 'v2023.04.07.04'
 
@@ -27,6 +28,13 @@ class FileHandler(web.RequestHandler):
         self.write('</body></html>')
 
 def make_app(key="test"):
+    job_logger = logging.getLogger()
+    handler = job_logger.handlers[0]
+    log_filename = os.path.basename(handler.baseFilename)
+    log_folder = "." + os.path.sep + os.path.dirname(os.path.relpath(handler.baseFilename)) + os.path.sep
+    # logging.info(f'log baseFilename: {handler.baseFilename}')
+    # logging.info(f'log file name: {log_filename}')
+    # logging.info(f'log folder: {log_folder}')
     webapp = web.Application([
         (r'/youtube/channel/(.*)', youtube.ChannelHandler),
         (r'/youtube/playlist/(.*)', youtube.PlaylistHandler),
@@ -41,6 +49,7 @@ def make_app(key="test"):
         (r'/bitchute/video/(.*)', bitchute.VideoHandler),
         (r'/dailymotion/channel/(.*)', dailymotion.ChannelHandler),
         (r'/dailymotion/video/(.*)', dailymotion.VideoHandler),
+        (r'/log/(.*)', log_output.LogFileHandler, {'path': log_folder, 'default_filename': log_filename}),
         (r'/config.ini', web.RedirectHandler, {'url': '/'}),
         (r'/README.md', web.RedirectHandler, {'url': '/'}),
         (r'/Dockerfile', web.RedirectHandler, {'url': '/'}),
@@ -71,7 +80,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--log-format',
         type=str,
-        default='%(asctime)-15s %(message)s',
+        default='%(asctime)-15s [%(levelname)s] %(message)s',
         metavar='FORMAT',
         help='Logging format using syntax for python logging module'
     )
