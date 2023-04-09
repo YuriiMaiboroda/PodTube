@@ -1,0 +1,10 @@
+#!/usr/bin/bash
+SCRIPTPATH=$(dirname "$(realpath "$0")")
+DIR=$SCRIPTPATH/..
+DIRD=$DIR/daemon
+DIRDL=$DIRD/log
+LOG_FILE_NAME=podtube.log
+LOG_FILE_PATH=$DIRDL/podtube.log
+DAEMON_OUT=$DIRDL/out.log
+DAEMON_ERR=$DIRDL/err.log
+
