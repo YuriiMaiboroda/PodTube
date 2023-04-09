@@ -1,0 +1,7 @@
+#!/usr/bin/bash
+SCRIPTPATH=$(dirname "$(realpath "$0")")
+. $SCRIPTPATH/const-paths
+
+tail -n 1000 $DAEMON_ERR | sponge $DAEMON_ERR
+tail -n 1000 $DAEMON_OUT | sponge $DAEMON_OUT
+tail -n 1000 $LOG_FILE | sponge $LOG_FILE
