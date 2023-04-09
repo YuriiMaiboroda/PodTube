@@ -1,0 +1,38 @@
+body {
+    background-color: black;
+    color: white;
+}
+.log-string {
+    color: chartreuse;
+}
+.log-critical {
+    color: darkseagreen;
+    background-color: darkred;
+}
+.log-error {
+    color: red;
+}
+.log-warning {
+    color: orange;
+}
+.log-info {
+    color: white;
+}
+.log-debug {
+    color: aqua;
+}
+.log-date {
+    color: darkcyan
+}
+.log-time {
+    color: cyan;
+}
+.log-number {
+    color: cornflowerblue;
+}
+.log-ip {
+    color: blueviolet
+}
+.logger {
+    margin: 1em;
+}
