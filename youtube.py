@@ -135,6 +135,17 @@ def get_youtube_url(video):
 def set_key( key=None ):
     key = key
 
+def get_youtube_api_key():
+    yt_key = os.getenv("YT_API_KEY")
+    if yt_key is not None:
+        logging.debug("Use YT KEY from EnvVar")
+    else:
+        conf = ConfigParser()
+        conf.read('config.ini')
+        yt_key = conf.get('youtube','api_key')
+        logging.debug("Use YT KEY from config")
+    return yt_key
+
 class ChannelHandler(web.RequestHandler):
     @gen.coroutine
     def head(self, channel):
@@ -143,7 +154,7 @@ class ChannelHandler(web.RequestHandler):
 
     @gen.coroutine
     def get(self, channel):
-        key = os.getenv("YT_API_KEY")
+        key = get_youtube_api_key()
         channel = channel.split('/')
         if len(channel) < 2:
             channel.append('video')
