@@ -50,10 +50,10 @@ class LogFileHandler(StaticFileNonCacheHandler):
                 return "<span class='" + style_class + "'>" + match_obj.group() + "</span>"
             return match_obj.group()
 
-        return re.sub(r"(?:((?:\d+[-/])+\d+)|((?:\d+:)+\d+(?:,\d+)?)|((?:\d+\.)+\d+)|\b(\d+)\b)", replacer, string, flags=re.MULTILINE)
+        return re.sub(r"(?:((?:\d+[-/])+\d+)|((?:\d+:)+\d+(?:,\d+)?)|((?:\d+\.)+\d+)|\b(\d+)\b)", replacer, string)
 
     def add_string_style(string: str):
-        return re.sub(r"(?:\"[^\"]*\")|(?:\'[^\']*\')", r"<span class='log-string'>\g<0></span>", string, flags=re.MULTILINE)
+        return re.sub(r"(?:\"[^\"\n]*\")|(?:\'[^\'\n]*\')", r"<span class='log-string'>\g<0></span>", string)
 
     def log_style(string: str, add_br: bool = False) -> str:
         string = LogFileHandler.add_block_borders(string)
