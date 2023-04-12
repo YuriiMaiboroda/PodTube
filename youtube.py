@@ -8,7 +8,7 @@ from pytube import YouTube
 from tornado import gen, httputil, ioloop, iostream, process, web
 from tornado.locks import Semaphore
 
-key = os.getenv("YT_API_KEY")
+key = None
 
 video_links = {}
 playlist_feed = {}
@@ -18,6 +18,27 @@ __version__ = 'v2023.04.07.04'
 
 conversion_queue = {}
 converting_lock = Semaphore(2)
+
+def get_youtube_api_key():
+    yt_key = os.getenv("YT_API_KEY")
+    if yt_key is not None:
+        logging.debug("Use YT KEY from EnvVar")
+    else:
+        conf = ConfigParser()
+        conf.read('config.ini')
+        yt_key = conf.get('youtube','api_key')
+        logging.debug("Use YT KEY from config")
+    return yt_key
+
+def init():
+    global key
+    if key is not None:
+        return
+    key = get_youtube_api_key()
+
+def set_key( new_key=None ):
+    global key
+    key = new_key
 
 def cleanup():
     # Globals
@@ -135,18 +156,10 @@ def get_youtube_url(video):
 def set_key( key=None ):
     key = key
 
-def get_youtube_api_key():
-    yt_key = os.getenv("YT_API_KEY")
-    if yt_key is not None:
-        logging.debug("Use YT KEY from EnvVar")
-    else:
-        conf = ConfigParser()
-        conf.read('config.ini')
-        yt_key = conf.get('youtube','api_key')
-        logging.debug("Use YT KEY from config")
-    return yt_key
-
 class ChannelHandler(web.RequestHandler):
+    def initialize(self):
+        init()
+
     @gen.coroutine
     def head(self, channel):
         self.set_header('Content-type', 'application/rss+xml')
@@ -154,7 +167,10 @@ class ChannelHandler(web.RequestHandler):
 
     @gen.coroutine
     def get(self, channel):
-        key = get_youtube_api_key()
+        global key
+        key2 = os.getenv("YT_API2")
+        logging.info("yt api key: %s" % key)
+        logging.info("yt other api: %s" % key2)
         channel = channel.split('/')
         if len(channel) < 2:
             channel.append('video')
@@ -256,7 +272,7 @@ class ChannelHandler(web.RequestHandler):
                 fg.podcast.itunes_author(snippet['channelTitle'])
                 fg.image(snippet['thumbnails'][icon]['url'])
                 fg.link(
-                    href=f'http://youtube.com/channel/%s' % channel[0],
+                    href=f'https://www.youtube.com/channel/%s' % channel[0],
                     rel='self'
                 )
                 fg.language('en-US')
@@ -310,7 +326,7 @@ class ChannelHandler(web.RequestHandler):
                 fe.podcast.itunes_author(snippet['channelTitle'])
                 fe.pubDate(snippet['publishedAt'])
                 fe.link(
-                    href=f'http://www.youtube.com/watch?v={current_video}',
+                    href=f'https://www.youtube.com/watch?v={current_video}',
                     title=snippet['title']
                 )
                 fe.podcast.itunes_summary(snippet['description'])
@@ -334,6 +350,9 @@ class ChannelHandler(web.RequestHandler):
             }
 
 class PlaylistHandler(web.RequestHandler):
+    def initialize(self):
+        init()
+
     @gen.coroutine
     def head(self, playlist):
         self.set_header('Content-type', 'application/rss+xml')
@@ -341,6 +360,7 @@ class PlaylistHandler(web.RequestHandler):
 
     @gen.coroutine
     def get(self, playlist):
+        global key
         playlist = playlist.split('/')
         if len(playlist) < 2:
             playlist.append('video')
@@ -386,7 +406,7 @@ class PlaylistHandler(web.RequestHandler):
             snippet['title']
         )
         fg.title(snippet['title'])
-        fg.id('http://' + self.request.host + 'youtube/' + self.request.uri)
+        fg.id('http://' + self.request.host + '/youtube/' + self.request.uri)
         fg.description(snippet['description'] or ' ')
         fg.author(
             name='Podtube',
@@ -396,7 +416,7 @@ class PlaylistHandler(web.RequestHandler):
         fg.podcast.itunes_author(snippet['channelTitle'])
         fg.image(snippet['thumbnails'][icon]['url'])
         fg.link(
-            href=f'http://youtube.com/playlist/?list={playlist}',
+            href=f'https://www.youtube.com/playlist/?list={playlist}',
             rel='self'
         )
         fg.language('en-US')
@@ -452,20 +472,20 @@ class PlaylistHandler(web.RequestHandler):
                 fe.updated(snippet['publishedAt'])
                 if playlist[1] == 'video':
                     fe.enclosure(
-                        url=f'http://{self.request.host}/video/{current_video}',
+                        url=f'http://{self.request.host}/youtube/video/{current_video}',
                         type="video/mp4"
                     )
                 elif playlist[1] == 'audio':
                     fe.enclosure(
-                        url=f'http://{self.request.host}/audio/{current_video}',
+                        url=f'http://{self.request.host}/youtube/audio/{current_video}',
                         type="audio/mpeg"
                     )
-                logging.info( "Final URL created for enclosure: %s" % f'http://{self.request.host}/video/{current_video}' )
+                logging.info( "Final URL created for enclosure: %s" % f'http://{self.request.host}/youtube/video/{current_video}' )
                 fe.author(name=snippet['channelTitle'])
                 fe.podcast.itunes_author(snippet['channelTitle'])
                 fe.pubDate(snippet['publishedAt'])
                 fe.link(
-                    href=f'http://www.youtube.com/watch?v={current_video}',
+                    href=f'https://www.youtube.com/watch?v={current_video}',
                     title=snippet['title']
                 )
                 fe.podcast.itunes_summary(snippet['description'])
@@ -493,6 +513,9 @@ class VideoHandler(web.RequestHandler):
         self.redirect(get_youtube_url(video))
 
 class AudioHandler(web.RequestHandler):
+    def initialize(self):
+        init()
+
     @gen.coroutine
     def head(self, channel):
         self.set_header('Accept-Ranges', 'bytes')
@@ -611,6 +634,12 @@ class AudioHandler(web.RequestHandler):
             self.request.remote_ip)
 
 class UserHandler(web.RequestHandler):
+    channels_cache = {}
+
+    def initialize(self, channel_handler_path: str):
+        init()
+        self.channel_handler_path = channel_handler_path
+
     def get_canonical(self, url):
         logging.info("Getting canonical for %s" % url)
         req = requests.get( url )
@@ -631,14 +660,34 @@ class UserHandler(web.RequestHandler):
             return can_url
         return None
 
+    def get_channel_token(self, username: str) -> str:
+        if username in UserHandler.channels_cache:
+            return UserHandler.channels_cache[username]
+        yt_url = f"https://www.youtube.com/@{username}/about"
+        canon_url = self.get_canonical( yt_url )
+        logging.debug('Canonical url: %s' % canon_url)
+        if canon_url is None:
+            return None
+        token_index = canon_url.rfind("/") + 1
+        channel_token = canon_url[token_index:]
+        UserHandler.channels_cache[username] = channel_token
+        return channel_token
+
     def get(self, username):
         logging.info('Handling Youtube channel by name: %s' % username)
-        yt_url = "https://youtube.com/@" + username
-        canon_url = self.get_canonical( yt_url )
+        append = None
+        append_index = username.find('/')
+        if append_index > -1:
+            append = username[append_index:]
+            username = username[:append_index]
+        channel_token = self.get_channel_token(username)
 
-        if canon_url is None:
+        if channel_token is None:
             logging.error("Failed to get canonical URL of %s" % username)
         else:
-            selfurl = f'http://{self.request.host}/' + canon_url.replace('https://', '').replace('www.', '').replace('.com', '')
+            selfurl = self.channel_handler_path + channel_token
+            if append is not None:
+                selfurl += append
+            logging.debug('Redirect to %s' % selfurl)
             self.redirect( selfurl )
         return None
