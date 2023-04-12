@@ -134,4 +134,6 @@ audio/
 .venv
 
 *.lock
+*.lck
+*.pid
 config.ini
