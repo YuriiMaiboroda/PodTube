@@ -36,8 +36,16 @@ def make_app(key="test"):
     # logging.info(f'log file name: {log_filename}')
     # logging.info(f'log folder: {log_folder}')
     webapp = web.Application([
-        (r'/youtube/channel/(.*)', youtube.ChannelHandler),
-        (r'/youtube/playlist/(.*)', youtube.PlaylistHandler),
+        (r'/youtube/channel/(.*)', youtube.ChannelHandler, {
+            'video_handler_path': '/youtube/video/',
+            'audio_handler_path': '/youtube/audio/',
+            'autoload_newest_audio': False
+        }),
+        (r'/youtube/playlist/(.*)', youtube.PlaylistHandler, {
+            'video_handler_path': '/youtube/video/',
+            'audio_handler_path': '/youtube/audio/',
+            'autoload_newest_audio': False
+        }),
         (r'/youtube/video/(.*)', youtube.VideoHandler),
         (r'/youtube/audio/(.*)', youtube.AudioHandler),
         (r'/youtube/user/@(.*)', youtube.UserHandler, {'channel_handler_path': '/youtube/channel/'}),
