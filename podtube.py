@@ -8,7 +8,7 @@ import youtube, bitchute, rumble, dailymotion
 from tornado import gen, httputil, ioloop, iostream, process, web
 import log_output
 
-__version__ = 'v2023.04.07.04'
+__version__ = 'v2023.04.12.05'
 
 class FileHandler(web.RequestHandler):
     def get(self):
