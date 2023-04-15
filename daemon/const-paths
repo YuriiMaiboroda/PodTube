@@ -5,6 +5,8 @@ DIRD=$DIR/daemon
 DIRDL=$DIRD/log
 LOG_FILE_NAME=podtube.log
 LOG_FILE_PATH=$DIRDL/podtube.log
+# LOG_LEVEL="DEBUG"
+LOG_LEVEL="INFO"
 DAEMON_OUT=$DIRDL/out.log
 DAEMON_ERR=$DIRDL/err.log
 
