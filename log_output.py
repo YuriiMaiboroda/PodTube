@@ -52,9 +52,13 @@ class LogFileHandler(StaticFileNonCacheHandler):
             elif match_obj.group(4) is not None:
                 style_class = "log-number"
             if style_class is not None:
+                if match_obj.group(7) is not None:
+                    return "<span class='" + style_class + "'>" + match_obj.group(6) + "</span>" + match_obj.group(7)
                 return "<span class='" + style_class + "'>" + match_obj.group() + "</span>"
             return match_obj.group()
-        return re.sub(r"(?:((?:\d+\.){3}\d+)|((?:(?:\d+-){2}|(?:\d+/){1,2}|(?:\d+\.){2})\d+)|((?:\d+:){1,2}\d+(?:[,.]\d+)?)|(\b0(?:x[0-9a-fA-F]+|b[01]+)\b|(&#)?\b(\d+(?:[,.]\d+)?))(?(5);))", replacer, string)
+        return re.sub(
+            r"(?:((?:\d+\.){3}\d+)|((?:(?:\d+-){2}|(?:\d+/){1,2}|(?:\d+\.){2})\d+)|((?:\d+:){1,2}\d+(?:[,.]\d+)?)|(\b0(?:x[0-9a-fA-F]+|b[01]+)\b|(&#)?\b(\d+(?:[,.]\d+)?))(?(5);|(\w{1,3})?\b))",
+            replacer, string)
 
     def add_string_style(string: str):
         return re.sub(r"(?:\"[^\"\n]*\")|(?:\'[^\'\n]*\')", r"<span class='log-string'>\g<0></span>", string)
@@ -99,7 +103,7 @@ class LogFileHandler(StaticFileNonCacheHandler):
         if self.absolute_path is None:
             return
         log_file = os.path.basename(self.absolute_path)
-        logging.debug('Get log (path: %s) from (%s)', log_file, self.request.remote_ip)
+        # logging.debug('Get log (path: %s) from (%s)', log_file, self.request.remote_ip)
         self.write('<html><head><title>PodTube Log (')
         self.write(log_file)
         self.write(')</title>')
