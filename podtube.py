@@ -8,7 +8,7 @@ import youtube, bitchute, rumble, dailymotion
 from tornado import gen, httputil, ioloop, iostream, process, web
 import log_output
 
-__version__ = 'v2023.04.07.04'
+__version__ = 'v2023.04.15.01'
 
 class FileHandler(web.RequestHandler):
     def get(self):
@@ -36,8 +36,16 @@ def make_app(key="test"):
     # logging.info(f'log file name: {log_filename}')
     # logging.info(f'log folder: {log_folder}')
     webapp = web.Application([
-        (r'/youtube/channel/(.*)', youtube.ChannelHandler),
-        (r'/youtube/playlist/(.*)', youtube.PlaylistHandler),
+        (r'/youtube/channel/(.*)', youtube.ChannelHandler, {
+            'video_handler_path': '/youtube/video/',
+            'audio_handler_path': '/youtube/audio/',
+            'autoload_newest_audio': False
+        }),
+        (r'/youtube/playlist/(.*)', youtube.PlaylistHandler, {
+            'video_handler_path': '/youtube/video/',
+            'audio_handler_path': '/youtube/audio/',
+            'autoload_newest_audio': False
+        }),
         (r'/youtube/video/(.*)', youtube.VideoHandler),
         (r'/youtube/audio/(.*)', youtube.AudioHandler),
         (r'/youtube/user/@(.*)', youtube.UserHandler, {'channel_handler_path': '/youtube/channel/'}),
@@ -85,13 +93,20 @@ if __name__ == '__main__':
         help='Logging format using syntax for python logging module'
     )
     parser.add_argument(
+        '--log-level',
+        type=str,
+        default=logging.getLevelName(logging.INFO),
+        help="Logging level using for python logging module",
+        choices=logging._nameToLevel.keys()
+    )
+    parser.add_argument(
         '-v', '--version',
         action='version',
         version="%(prog)s " + __version__
     )
     args = parser.parse_args()
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.getLevelName(args.log_level),
         format=args.log_format,
         filename=args.log_file,
         filemode='a'
@@ -103,7 +118,7 @@ if __name__ == '__main__':
     logging.info(f'Started listening on {args.port}')
     ioloop.PeriodicCallback(
         callback=youtube.cleanup,
-        callback_time=1000
+        callback_time=600000
     ).start()
     ioloop.PeriodicCallback(
         callback=youtube.convert_videos,

@@ -1,5 +1,4 @@
 bitchute_sample*
-start
 geckodriver.log
 rumble_sample*
 .vscode
@@ -135,4 +134,6 @@ audio/
 .venv
 
 *.lock
+*.lck
+*.pid
 config.ini

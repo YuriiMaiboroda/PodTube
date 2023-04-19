@@ -1,0 +1,6 @@
+#!/usr/bin/bash
+SCRIPTPATH=$(dirname "$(realpath "$0")")
+. $SCRIPTPATH/const-paths
+
+mkdir -p $DIRDL
+daemonize -e $DAEMON_ERR -o $DAEMON_OUT -p $DIRD/podtube.pid -l $DIRD/podtube.lck -v ~/../usr/bin/bash $DIRD/podtube-start

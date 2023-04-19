@@ -1,0 +1,7 @@
+#!/usr/bin/bash
+SCRIPTPATH=$(dirname "$(realpath "$0")")
+. $SCRIPTPATH/const-paths
+
+bash $DIRD/stop
+rm -rf $DIRDL
+bash $DIRD/start

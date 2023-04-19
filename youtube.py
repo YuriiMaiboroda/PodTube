@@ -1,10 +1,10 @@
-import datetime, logging, os, psutil
+import datetime, logging, os, psutil, time
 import misaka, glob, requests
 
 from configparser import ConfigParser
 from pathlib import Path
 from feedgen.feed import FeedGenerator
-from pytube import YouTube
+from pytube import YouTube, exceptions
 from tornado import gen, httputil, ioloop, iostream, process, web
 from tornado.locks import Semaphore
 
@@ -14,7 +14,7 @@ video_links = {}
 playlist_feed = {}
 channel_feed = {}
 
-__version__ = 'v2023.04.07.04'
+__version__ = 'v2023.04.15.01'
 
 conversion_queue = {}
 converting_lock = Semaphore(2)
@@ -22,12 +22,12 @@ converting_lock = Semaphore(2)
 def get_youtube_api_key():
     yt_key = os.getenv("YT_API_KEY")
     if yt_key is not None:
-        logging.debug("Use YT KEY from EnvVar")
+        logging.info("Got YT API key from ENV: %s" % yt_key)
     else:
         conf = ConfigParser()
         conf.read('config.ini')
         yt_key = conf.get('youtube','api_key')
-        logging.debug("Use YT KEY from config")
+        logging.info("Got YT API key from config file: %s" % yt_key)
     return yt_key
 
 def init():
@@ -86,19 +86,27 @@ def cleanup():
             channel_feed_length
         )
     # Space Check
-    size = psutil.disk_usage('./audio')
-    if size.free < 536870912:
-        for f in sorted(glob.glob('./audio/*mp3'), key=lambda a_file: os.path.getctime(a_file)):
+    expired_time = time.time() - 259200 # 3 days in seconds
+    size_clean = False
+    for f in sorted(glob.glob('./audio/*{mp3,mp3.tmp}'), key=lambda a_file: os.path.getctime(a_file)):
+        size = psutil.disk_usage('./audio')
+        ctime = os.path.getctime(f)
+        size_clean = size_clean or size.free < 536870912
+        time_clean = ctime <= expired_time
+        if time_clean or size_clean:
             os.remove(f)
             logging.info('Deleted %s', f)
-            size = psutil.disk_usage('./audio')
-            if size.free > 16106127360:
-                return
+            if not time_clean and size_clean and size.free > 16106127360:
+                break
+        else:
+            break
 
 @gen.coroutine
 def convert_videos():
     global conversion_queue
     global converting_lock
+    if len(conversion_queue) == 0:
+        return
     try:
         remaining = [
             key
@@ -115,19 +123,31 @@ def convert_videos():
     with (yield converting_lock.acquire()):
         logging.info('Converting: %s', video)
         audio_file = './audio/{}.mp3'.format(video)
-        ffmpeg_process = process.Subprocess([
-            'ffmpeg',
-            '-loglevel', 'panic',
-            '-y',
-            '-i', get_youtube_url(video),
-            '-f', 'mp3', audio_file + '.temp'
-        ])
         try:
+            yutubeUrl = get_youtube_url(video)
+            ffmpeg_process = process.Subprocess([
+                'ffmpeg',
+                '-loglevel', 'panic',
+                '-y',
+                '-i', yutubeUrl,
+                '-f', 'mp3', audio_file + '.temp'
+            ])
             yield ffmpeg_process.wait_for_exit()
             os.rename(audio_file + '.temp', audio_file)
+            logging.info('Successfully converted: %s', video)
         except Exception as ex:
-            logging.error('Error converting file: %s', ex.reason)
-            os.remove(audio_file + '.temp')
+            logging.error('Error converting file: %s', ex)
+            if isinstance(ex, (exceptions.LiveStreamError, exceptions.VideoUnavailable)):
+                if video not in video_links:
+                    video_links[video] = {
+                        'url': None,
+                        'expire': datetime.datetime.now() + datetime.timedelta(hours=6)
+                    }
+                video_links[video]['unavailable'] = True
+            try:
+                os.remove(audio_file + '.temp')
+            except Exception as ex2:
+                logging.error('Error remove temp file: %s', ex2)
         finally:
             del conversion_queue[video]
 
@@ -153,12 +173,12 @@ def get_youtube_url(video):
     logging.info( "vid: %s" % vid )
     return link['url']
 
-def set_key( key=None ):
-    key = key
-
 class ChannelHandler(web.RequestHandler):
-    def initialize(self):
+    def initialize(self, video_handler_path: str, audio_handler_path: str, autoload_newest_audio: bool = True):
         init()
+        self.autoload_newest_audio = autoload_newest_audio
+        self.video_handler_path = video_handler_path
+        self.audio_handler_path = audio_handler_path
 
     @gen.coroutine
     def head(self, channel):
@@ -168,9 +188,6 @@ class ChannelHandler(web.RequestHandler):
     @gen.coroutine
     def get(self, channel):
         global key
-        key2 = os.getenv("YT_API2")
-        logging.info("yt api key: %s" % key)
-        logging.info("yt other api: %s" % key2)
         channel = channel.split('/')
         if len(channel) < 2:
             channel.append('video')
@@ -263,7 +280,7 @@ class ChannelHandler(web.RequestHandler):
                     key=lambda x: snippet['thumbnails'][x]['width']
                 )
                 fg.title(snippet['channelTitle'])
-                fg.id('http://' + self.request.host + self.request.uri)
+                fg.id(f'{self.request.protocol}://{self.request.host}{self.request.uri}')
                 fg.description(snippet['description'] or ' ')
                 fg.author(
                     name='Podtube',
@@ -314,12 +331,12 @@ class ChannelHandler(web.RequestHandler):
                 fe.updated(snippet['publishedAt'])
                 if channel[1] == 'video':
                     fe.enclosure(
-                        url=f'http://{self.request.host}/youtube/video/{current_video}',
+                        url=f'{self.request.protocol}://{self.request.host}{self.video_handler_path}{current_video}',
                         type="video/mp4"
                     )
                 elif channel[1] == 'audio':
                     fe.enclosure(
-                        url=f'http://{self.request.host}/youtube/audio/{current_video}',
+                        url=f'{self.request.protocol}://{self.request.host}{self.audio_handler_path}{current_video}',
                         type="audio/mpeg"
                     )
                 fe.author(name=snippet['channelTitle'])
@@ -341,6 +358,8 @@ class ChannelHandler(web.RequestHandler):
             channel_feed[chan] = feed
         self.write(feed['feed'])
         self.finish()
+        if not self.autoload_newest_audio:
+            return
         video = video['video']
         mp3_file = 'audio/{}.mp3'.format(video)
         if channel[1] == 'audio' and not os.path.exists(mp3_file) and video not in conversion_queue.keys():
@@ -350,8 +369,11 @@ class ChannelHandler(web.RequestHandler):
             }
 
 class PlaylistHandler(web.RequestHandler):
-    def initialize(self):
+    def initialize(self, video_handler_path: str, audio_handler_path: str, autoload_newest_audio: bool = True):
         init()
+        self.autoload_newest_audio = autoload_newest_audio
+        self.video_handler_path = video_handler_path
+        self.audio_handler_path = audio_handler_path
 
     @gen.coroutine
     def head(self, playlist):
@@ -406,7 +428,7 @@ class PlaylistHandler(web.RequestHandler):
             snippet['title']
         )
         fg.title(snippet['title'])
-        fg.id('http://' + self.request.host + '/youtube/' + self.request.uri)
+        fg.id(f'{self.request.protocol}://{self.request.host}{self.request.uri}')
         fg.description(snippet['description'] or ' ')
         fg.author(
             name='Podtube',
@@ -470,17 +492,20 @@ class PlaylistHandler(web.RequestHandler):
                 )
                 fe.podcast.itunes_image(snippet['thumbnails'][icon]['url'])
                 fe.updated(snippet['publishedAt'])
+                final_url = None
                 if playlist[1] == 'video':
+                    final_url = f'{self.request.protocol}://{self.request.host}{self.video_handler_path}{current_video}'
                     fe.enclosure(
-                        url=f'http://{self.request.host}/youtube/video/{current_video}',
+                        url=final_url,
                         type="video/mp4"
                     )
                 elif playlist[1] == 'audio':
+                    final_url = f'{self.request.protocol}://{self.request.host}{self.audio_handler_path}{current_video}'
                     fe.enclosure(
-                        url=f'http://{self.request.host}/youtube/audio/{current_video}',
+                        url=final_url,
                         type="audio/mpeg"
                     )
-                logging.info( "Final URL created for enclosure: %s" % f'http://{self.request.host}/youtube/video/{current_video}' )
+                logging.debug( "Final URL created for enclosure: %s" % final_url )
                 fe.author(name=snippet['channelTitle'])
                 fe.podcast.itunes_author(snippet['channelTitle'])
                 fe.pubDate(snippet['publishedAt'])
@@ -499,6 +524,8 @@ class PlaylistHandler(web.RequestHandler):
         playlist_feed[playlist_name] = feed
         self.write(feed['feed'])
         self.finish()
+        if not self.autoload_newest_audio:
+            return
         video = video['video']
         mp3_file = 'audio/{}.mp3'.format(video)
         if playlist[1] == 'audio' and not os.path.exists(mp3_file) and video not in conversion_queue.keys():
@@ -515,15 +542,20 @@ class VideoHandler(web.RequestHandler):
 class AudioHandler(web.RequestHandler):
     def initialize(self):
         init()
+        self.disconnected = False
 
     @gen.coroutine
-    def head(self, channel):
+    def head(self, audio):
         self.set_header('Accept-Ranges', 'bytes')
         self.set_header("Content-Type", "audio/mpeg")
 
     @gen.coroutine
     def get(self, audio):
         logging.info('Audio: %s (%s)', audio, self.request.remote_ip)
+        if audio in video_links and 'unavailable' in video_links[audio] and video_links[audio]['unavailable'] == True:
+            # logging.info('Audio: %s is not available (%s)', audio, self.request.remote_ip)
+            self.set_status(422) # Unprocessable Content. E.g. the video is a live stream
+            return
         mp3_file = './audio/{}.mp3'.format(audio)
         if not os.path.exists(mp3_file):
             if audio not in conversion_queue.keys():
@@ -533,6 +565,17 @@ class AudioHandler(web.RequestHandler):
                 }
             while audio in conversion_queue:
                 yield gen.sleep(0.5)
+                if self.disconnected:
+                    # logging.info('User was disconnected while requested audio: %s (%s)', audio, self.request.remote_ip)
+                    self.set_status(408)
+                    return
+        if audio in video_links and 'unavailable' in video_links[audio] and video_links[audio]['unavailable'] == True:
+            # logging.info('Audio: %s is not available (%s)', audio, self.request.remote_ip)
+            self.set_status(422) # Unprocessable Content. E.g. the video is a live stream
+            return
+        if not os.path.exists(mp3_file):
+            self.set_status(404)
+            return
         request_range = None
         range_header = self.request.headers.get("Range")
         if range_header:
@@ -632,6 +675,7 @@ class AudioHandler(web.RequestHandler):
         logging.info(
             'Audio: User quit during transcoding (%s)',
             self.request.remote_ip)
+        self.disconnected = True
 
 class UserHandler(web.RequestHandler):
     channels_cache = {}
@@ -688,6 +732,6 @@ class UserHandler(web.RequestHandler):
             selfurl = self.channel_handler_path + channel_token
             if append is not None:
                 selfurl += append
-            logging.debug('Redirect to %s' % selfurl)
-            self.redirect( selfurl )
+            logging.info('Redirect to %s' % selfurl)
+            self.redirect( selfurl, permanent = True )
         return None
