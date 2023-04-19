@@ -16,62 +16,106 @@ class LogFileHandler(StaticFileNonCacheHandler):
     BLOCK_START = "@@@___@@@___@@@"
     BLOCK_END = "===___===___==="
 
-    def escape(string: str) -> str:
+    @classmethod
+    def escape(cls, string: str) -> str:
         return string.replace("<", "&lt;").replace(">", "&gt;").replace("@", "&#64;").replace("=", "&#61;")
 
-    def add_block_borders(string: str) -> str:
-        string = re.sub(r"^[ \t]*(\d+-\d+-\d+ \d+:\d+:\d+)", rf"{LogFileHandler.BLOCK_START}\g<0>", string, flags = re.MULTILINE)
-        string = re.sub(rf"^{LogFileHandler.BLOCK_START}.*?(?=\n*(?:{LogFileHandler.BLOCK_START}|\Z))", rf"\g<0>{LogFileHandler.BLOCK_END}", string, flags = re.MULTILINE | re.DOTALL)
+    @classmethod
+    def add_block_start_border(cls, string: str) -> str:
+        return re.sub(r"^[ \t]*(\d+-\d+-\d+ \d+:\d+:\d+)", rf"{cls.BLOCK_START}\g<0>", string, flags = re.MULTILINE)
+
+    @classmethod
+    def add_block_end_borders(cls, string):
+        return re.sub(rf"^{cls.BLOCK_START}.*?(?=\n*(?:{cls.BLOCK_START}|\Z))", rf"\g<0>{cls.BLOCK_END}", string, flags = re.MULTILINE | re.DOTALL)
+
+    @classmethod
+    def add_block_borders(cls, string: str) -> str:
+        string = cls.add_block_start_border(string)
+        string = cls.add_block_end_borders(string)
         return string
 
-    def remove_block_borders(string: str) -> str:
-        return string.replace(LogFileHandler.BLOCK_START, "").replace(LogFileHandler.BLOCK_END, "")
+    @classmethod
+    def remove_block_borders(cls, string: str) -> str:
+        return string.replace(cls.BLOCK_START, "").replace(cls.BLOCK_END, "")
 
-    def add_braces(string: str) -> str:
+    @classmethod
+    def add_braces(cls, string: str) -> str:
         return string.replace("\n", "<br />\n")
 
-    def add_log_level_style(string: str):
+    @classmethod
+    def add_log_level_style(cls, string: str, use_block_borders: bool = True):
         def replacer(match_obj: re.Match[str]):
             if match_obj.group(1) is not None:
                 return f"<span class='log-{match_obj.group(1).lower()}'>{match_obj.group()}</span>"
             return match_obj.group()
 
-        return re.sub(rf"^{LogFileHandler.BLOCK_START}.*?\[(CRITICAL|ERROR|WARNING|INFO|DEBUG)\].*?{LogFileHandler.BLOCK_END}", replacer, string, flags = re.MULTILINE | re.DOTALL)
+        return re.sub(rf"^{cls.BLOCK_START if use_block_borders else ''}.*?\[(CRITICAL|ERROR|WARNING|INFO|DEBUG)\].?{'?' + LogFileHandler.BLOCK_END if use_block_borders else ''}", replacer, string, flags = re.MULTILINE | re.DOTALL)
 
-    def add_numbers_style(string: str):
+    @classmethod
+    def add_numbers_style(cls, string: str):
         def replacer(match_obj: re.Match[str]):
-            if match_obj.group(5) is not None:
+            if match_obj.group("html") is not None:
                 return match_obj.group()
             style_class = None
-            if match_obj.group(1) is not None:
+            if match_obj.group("ip") is not None:
                 style_class = "log-ip"
-            elif match_obj.group(2) is not None:
+            elif match_obj.group("date") is not None:
                 style_class = "log-date"
-            elif match_obj.group(3) is not None:
+            elif match_obj.group("time") is not None:
                 style_class = "log-time"
-            elif match_obj.group(4) is not None:
+            elif match_obj.group("number") is not None:
                 style_class = "log-number"
+                if match_obj.group("hex") is not None:
+                    style_class += " log-number-hex"
+                if match_obj.group("bin") is not None:
+                    style_class += " log-number-bin"
+                if match_obj.group("simple_number") is not None:
+                    style_class += " log-number-simple"
+
             if style_class is not None:
-                if match_obj.group(7) is not None:
-                    return "<span class='" + style_class + "'>" + match_obj.group(6) + "</span>" + match_obj.group(7)
                 return "<span class='" + style_class + "'>" + match_obj.group() + "</span>"
             return match_obj.group()
+
         return re.sub(
-            r"(?:((?:\d+\.){3}\d+)|((?:(?:\d+-){2}|(?:\d+/){1,2}|(?:\d+\.){2})\d+)|((?:\d+:){1,2}\d+(?:[,.]\d+)?)|(\b0(?:x[0-9a-fA-F]+|b[01]+)\b|(&#)?\b(\d+(?:[,.]\d+)?))(?(5);|(\w{1,3})?\b))",
-            replacer, string)
+            r"(?:(?P<ip>(?:\d+\.){3}\d+)|(?# \
+                )(?P<date>(?:(?:\d+-){2}|(?:\d+\/){1,2}|(?:\d+\.){2})\d+)|(?# \
+                )(?P<time>(?:\d+:){1,2}\d+(?:[,.]\d+)?)|(?# \
+                )(?P<html>&#\d+;)|(?# \
+                )(?P<number>\b(?# \
+                    )(?P<hex>0x[0-9a-fA-F]+)\b|(?# \
+                    )(?P<bin>0b[01]+)\b|(?# \
+                    )(?P<simple_number>\d+(?:[,.]\d+)?)(?=[\w-]{0,3}(?:[^\w-]|$))(?# \
+                ))(?# \
+            ))",
+            replacer,
+            string
+        )
 
-    def add_string_style(string: str):
-        return re.sub(r"(?:\"[^\"\n]*\")|(?:\'[^\'\n]*\')", r"<span class='log-string'>\g<0></span>", string)
+    @classmethod
+    def add_string_style(cls, string: str):
+        def replacer(match_obj: re.Match[str]):
+            prefix = match_obj.group(1)
+            return f"{'' if prefix is None else prefix}<span class='log-string'>{match_obj.group(2)}</span>"
 
-    def log_style(string: str, add_br: bool = False) -> str:
-        string = LogFileHandler.escape(string)
-        string = LogFileHandler.add_block_borders(string)
-        string = LogFileHandler.add_string_style(string)
-        string = LogFileHandler.add_numbers_style(string)
-        string = LogFileHandler.add_log_level_style(string)
-        string = LogFileHandler.remove_block_borders(string)
+        return re.sub(r"(?<!\\)(\\\\)*((?P<quote>(?P<is_double>\")|')(?:(?:\\\\)*(?(is_double)[^\"\\]*|[^\'\\]*)(?:\\\\)*(?:\\[^\\])?)*(?P=quote))", replacer, string)
+
+    @classmethod
+    def log_style(cls, string: str, add_br: bool = False) -> str:
+        string = cls.escape(string)
+        # string = cls.add_block_borders(string)
+        # string = cls.add_string_style(string)
+        # string = cls.add_numbers_style(string)
+        # string = cls.add_log_level_style(string)
+        # string = cls.remove_block_borders(string)
+        string = cls.add_block_start_border(string)
+        blocks = string.split(cls.BLOCK_START)
+        for block in blocks:
+            block = cls.add_string_style(block)
+            block = cls.add_numbers_style(block)
+            block = cls.add_log_level_style(block, False)
+        string = "".join(blocks)
         if add_br:
-            string = LogFileHandler.add_braces(string)
+            string = cls.add_braces(string)
         return string
 
     def validate_absolute_path(self, root: str, absolute_path: str) -> Optional[str]:
