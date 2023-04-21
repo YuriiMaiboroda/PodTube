@@ -1,14 +1,17 @@
 #!/usr/bin/python3
 
+from configparser import ConfigParser
 import glob, logging, os
 from argparse import ArgumentParser
 
+import utils
 import misaka
 import youtube, bitchute, rumble, dailymotion
-from tornado import gen, httputil, ioloop, iostream, process, web
 import log_output
+from tornado import ioloop, web
 
-__version__ = 'v2023.04.07.04'
+# BE SURE TO UPDATE THIS - ci/cd depends on it
+__version__ = 'v2023.04.21.5'
 
 class FileHandler(web.RequestHandler):
     def get(self):
@@ -27,7 +30,11 @@ class FileHandler(web.RequestHandler):
             )
         self.write('</body></html>')
 
-def make_app(key="test"):
+def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str, default_value = None):
+    return utils.get_env_or_config_option(conf, env_name, config_name, "general", default_value=default_value)
+
+def make_app(config: ConfigParser):
+    youtube.init(config)
     job_logger = logging.getLogger()
     handler = job_logger.handlers[0]
     log_filename = os.path.basename(handler.baseFilename)
@@ -36,11 +43,17 @@ def make_app(key="test"):
     # logging.info(f'log file name: {log_filename}')
     # logging.info(f'log folder: {log_folder}')
     webapp = web.Application([
-        (r'/youtube/channel/(.*)', youtube.ChannelHandler),
-        (r'/youtube/playlist/(.*)', youtube.PlaylistHandler),
+        (r'/youtube/channel/(.*)', youtube.ChannelHandler, {
+            'video_handler_path': '/youtube/video/',
+            'audio_handler_path': '/youtube/audio/',
+        }),
+        (r'/youtube/playlist/(.*)', youtube.PlaylistHandler, {
+            'video_handler_path': '/youtube/video/',
+            'audio_handler_path': '/youtube/audio/',
+        }),
         (r'/youtube/video/(.*)', youtube.VideoHandler),
         (r'/youtube/audio/(.*)', youtube.AudioHandler),
-        (r'/youtube/user/@(.*)', youtube.UserHandler),
+        (r'/youtube/user/@(.*)', youtube.UserHandler, {'channel_handler_path': '/youtube/channel/'}),
         (r'/rumble/user/(.*)', rumble.UserHandler),
         (r'/rumble/channel/(.*)', rumble.ChannelHandler),
         (r'/rumble/video/(.*)', rumble.VideoHandler),
@@ -62,51 +75,79 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     if not os.path.exists('./audio'):
         os.mkdir('audio')
-    parser = ArgumentParser(prog='PodTube')
+    defaults = {}
+    parser = ArgumentParser(
+        description="This is a python application for converting Youtube, Rumble and Bitchute channels into podcast-friendly RSS feeds."
+    )
+    parser.add_argument(
+        '--config-file',
+        type=str,
+        help='Location and name of config file'
+    )
     parser.add_argument(
         'port',
         type=int,
-        default=15000,
         nargs='?',
         help='Port Number to listen on'
     )
+    defaults["port"] = 15000
     parser.add_argument(
         '--log-file',
         type=str,
-        default='/dev/stdout',
-        metavar='FILE',
         help='Location and name of log file'
     )
+    defaults["log_file"] = '/dev/stdout'
     parser.add_argument(
         '--log-format',
         type=str,
-        default='%(asctime)-15s [%(levelname)s] %(message)s',
-        metavar='FORMAT',
         help='Logging format using syntax for python logging module'
     )
+    defaults["log_format"] = '%(asctime)-15s [%(levelname)s] %(message)s'
+    parser.add_argument(
+        '--log-level',
+        type=str,
+        help="Logging level using for python logging module",
+        choices=logging._nameToLevel.keys()
+    )
+    defaults['log_level'] = logging.getLevelName(logging.INFO)
+    parser.add_argument(
+        '--log-filemode',
+        type=str,
+        help="Logging file mode using for python logging module",
+        choices=['a', 'w']
+    )
+    defaults['log_filemode'] = 'a'
     parser.add_argument(
         '-v', '--version',
         action='version',
         version="%(prog)s " + __version__
     )
     args = parser.parse_args()
+    conf = None
+    env_conf_file = os.getenv("CONFIG_FILE")
+    if env_conf_file is not None:
+        args.config_file = env_conf_file
+    if args.config_file:
+        conf = ConfigParser(inline_comment_prefixes='#')
+        read_ok = conf.read(args.config_file)
+        if not read_ok:
+            logging.error("Error reading configuration file: " + args.config_file)
+            conf = None
+    args.port         = args.port         if args.port         is not None else get_env_or_config_option(conf, "GENERAL_PORT"        , "port"        , defaults["port"])
+    args.log_file     = args.log_file     if args.log_file     is not None else get_env_or_config_option(conf, "GENERAL_LOG_FILE"    , "log_file"    , defaults["log_file"])
+    args.log_format   = args.log_format   if args.log_format   is not None else get_env_or_config_option(conf, "GENERAL_LOG_FORMAT"  , "log_format"  , defaults["log_format"])
+    args.log_level    = args.log_level    if args.log_level    is not None else get_env_or_config_option(conf, "GENERAL_LOG_LEVEL"   , "log_level"   , defaults["log_level"])
+    args.log_filemode = args.log_filemode if args.log_filemode is not None else get_env_or_config_option(conf, "GENERAL_LOG_FILEMODE", "log_filemode", defaults["log_filemode"])
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.getLevelName(args.log_level),
         format=args.log_format,
         filename=args.log_file,
-        filemode='a'
+        filemode=args.log_filemode
     )
     for file in glob.glob('audio/*.temp'):
         os.remove(file)
-    app = make_app( )
+    logging.info(f"Start server")
+    app = make_app(conf)
     app.listen(args.port)
     logging.info(f'Started listening on {args.port}')
-    ioloop.PeriodicCallback(
-        callback=youtube.cleanup,
-        callback_time=1000
-    ).start()
-    ioloop.PeriodicCallback(
-        callback=youtube.convert_videos,
-        callback_time=1000
-    ).start()
     ioloop.IOLoop.instance().start()

@@ -6,7 +6,7 @@ from feedgen.feed import FeedGenerator
 from bs4 import BeautifulSoup
 from tornado import web
 
-__version__ = 'v2023.04.05.3'
+__version__ = 'v2023.04.12.05'
 
 class ChannelHandler(web.RequestHandler):
     def head(self, channel):
@@ -270,7 +270,7 @@ class CategoryHandler(web.RequestHandler):
             )
         return feed.rss_str( pretty=True )
 
-def get_rumble_url( video ):
+def get_rumble_url( video, bitrate=None ):
     url = "https://rumble.com/%s" % video
     logging.info( "Getting URL: %s" % url )
 
@@ -282,6 +282,8 @@ def get_rumble_url( video ):
     vidurl = dat[0]['embedUrl']
     logging.info( "Found embedded URL: %s" % vidurl )
 
+    embedVidID = vidurl.rstrip('/').split('/')[-1]
+
     ## second, we get the url to the mp4 file
     ## tricky stuff that will likely break a lot
     ## but we need to parse out values within a javascript function
@@ -289,23 +291,59 @@ def get_rumble_url( video ):
     r = requests.get( vidurl )
     bs = BeautifulSoup( r.text, 'lxml' )
     el = bs.find("script").string
+
     import re
-    lnk = re.search( r"https.*\.mp4", bs.find( "script" ).string )
-    for section in lnk.string.split('":"'):
-        mtch = re.match( r'^(https.+\.mp4).+$', section )
-        if mtch is not None:
-            lnk = mtch.group().split('"')[0].replace('\\', '')
-            break
+    vidurl = None
+    preparsedvids = None
 
-    if type(lnk) is str:
-        vidurl = lnk
+    ## need multiple regexes to find usable json
+
+    # regex #1
+    regexSearch = re.search( r'"ua":\{"mp4":.+\}\}\},', el )
+    if regexSearch is not None:
+        try:
+            vids = json.loads( regexSearch.group(0).replace(r'"ua":{"mp4":', '[').split('"timeline"')[0].replace(r'}}},', '}}}]') )
+            logging.info("First json regex worked")
+        except:
+            logging.info("Trying second json regex")
+            vids = json.loads( regexSearch.group(0).replace(r'"ua":{"mp4":', '[').split('"timeline"')[0].replace(r'}}}},', '}}}]') )
     else:
-        vidurl = lnk.group().split('"')[0].replace('\\', '')
+        logging.info( "Failed first json regex parse. Trying the second" )
 
-    logging.info( "Finally got the video URL: %s" % vidurl )
+    if bitrate is not None:
+        # find the requested bitrate video
+        for vid in vids[0]:
+            ## handle bitrate requests
+            if vid == bitrate:
+                vidurl = vid['url']
+                break
+    else:
+        # find a default bitrate video. 240p first, 360p second, anything at all third
+        for res in ('240', '360'):
+            vid = vids[0].get(res)
+            if vid is not None:
+                logging.info("Grabbing %sp video" % res)
+                vidurl = vid['url']
+                break
+        
+        if vidurl is None:
+            for vid in vids[0]:
+                if vids[0][vid]['url'] is not None:
+                    logging.info("Grabbing %sp format" % vid)
+                    vidurl = vids[0][vid]['url']
+                    break
+
+    if vidurl is None:
+        logging.info( "Failed to get video: %s" % video)
+    else:
+        logging.info( "Got the video URL: %s" % vidurl )
+
     return vidurl
 
 class VideoHandler(web.RequestHandler):
     def get(self, video):
-        logging.info("Video: %s" % video)
-        self.redirect( get_rumble_url(video) )
+        logging.info("Rumble Video: %s" % video)
+        bitrate = None
+        if bitrate is not None:
+            logging.info("Requesting bitrate: %s" % bitrate)
+        self.redirect( get_rumble_url(video, bitrate) )
