@@ -49,7 +49,9 @@ class LogFileHandler(StaticFileNonCacheHandler):
                 return f"<span class='log-{match_obj.group(1).lower()}'>{match_obj.group()}</span>"
             return match_obj.group()
 
-        return re.sub(rf"^{cls.BLOCK_START if use_block_borders else ''}.*?\[(CRITICAL|ERROR|WARNING|INFO|DEBUG)\].?{'?' + LogFileHandler.BLOCK_END if use_block_borders else ''}", replacer, string, flags = re.MULTILINE | re.DOTALL)
+        if use_block_borders:
+            return re.sub(rf"^{cls.BLOCK_START}.*?\[(CRITICAL|ERROR|WARNING|INFO|DEBUG)\].*?{LogFileHandler.BLOCK_END}", replacer, string, flags = re.MULTILINE | re.DOTALL)
+        return re.sub(rf"^.*?\[(CRITICAL|ERROR|WARNING|INFO|DEBUG)\].*?(?=\n*\Z)", replacer, string, flags = re.MULTILINE | re.DOTALL)
 
     @classmethod
     def add_numbers_style(cls, string: str):
@@ -81,11 +83,11 @@ class LogFileHandler(StaticFileNonCacheHandler):
                 )(?P<date>(?:(?:\d+-){2}|(?:\d+\/){1,2}|(?:\d+\.){2})\d+)|(?# \
                 )(?P<time>(?:\d+:){1,2}\d+(?:[,.]\d+)?)|(?# \
                 )(?P<html>&#\d+;)|(?# \
-                )(?P<number>\b(?# \
+                )(?P<number>\b((?# \
                     )(?P<hex>0x[0-9a-fA-F]+)\b|(?# \
                     )(?P<bin>0b[01]+)\b|(?# \
                     )(?P<simple_number>\d+(?:[,.]\d+)?)(?=[\w-]{0,3}(?:[^\w-]|$))(?# \
-                ))(?# \
+                )))(?# \
             ))",
             replacer,
             string
@@ -109,10 +111,12 @@ class LogFileHandler(StaticFileNonCacheHandler):
         # string = cls.remove_block_borders(string)
         string = cls.add_block_start_border(string)
         blocks = string.split(cls.BLOCK_START)
-        for block in blocks:
+        for i in range(len(blocks)):
+            block = blocks[i]
             block = cls.add_string_style(block)
             block = cls.add_numbers_style(block)
             block = cls.add_log_level_style(block, False)
+            blocks[i] = block
         string = "".join(blocks)
         if add_br:
             string = cls.add_braces(string)
