@@ -83,7 +83,7 @@ class LogFileHandler(StaticFileNonCacheHandler):
                 )(?P<date>(?:(?:\d+-){2}|(?:\d+\/){1,2}|(?:\d+\.){2})\d+)|(?# \
                 )(?P<time>(?:\d+:){1,2}\d+(?:[,.]\d+)?)|(?# \
                 )(?P<html>&#\d+;)|(?# \
-                )(?P<number>\b((?# \
+                )(?P<number>\b(?:(?# \
                     )(?P<hex>0x[0-9a-fA-F]+)\b|(?# \
                     )(?P<bin>0b[01]+)\b|(?# \
                     )(?P<simple_number>\d+(?:[,.]\d+)?)(?=[\w-]{0,3}(?:[^\w-]|$))(?# \
