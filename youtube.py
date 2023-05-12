@@ -383,7 +383,8 @@ class ChannelHandler(web.RequestHandler):
                     video = {'video': fe.id(), 'expire': fe.pubDate()}
         feed = {
             'feed': fg.rss_str(),
-            'expire': datetime.datetime.now() + datetime.timedelta(hours=calls)
+            'expire': datetime.datetime.now() + datetime.timedelta(hours=calls),
+            'title': channel_data['title']
         }
         for chan in channel_name:
             channel_feed[chan] = feed
@@ -448,7 +449,8 @@ class PlaylistHandler(web.RequestHandler):
             __version__,
             'https://github.com/amckee/PodTube'
         )
-        snippet = response['items'][0]['snippet']
+        playlist_data = response['items'][0]['snippet']
+        snippet = playlist_data
         icon = max(
             snippet['thumbnails'],
             key=lambda x: snippet['thumbnails'][x]['width']
@@ -550,7 +552,8 @@ class PlaylistHandler(web.RequestHandler):
                     video = {'video': fe.id(), 'expire': fe.pubDate()}
         feed = {
             'feed': fg.rss_str(),
-            'expire': datetime.datetime.now() + datetime.timedelta(hours=calls)
+            'expire': datetime.datetime.now() + datetime.timedelta(hours=calls),
+            'title': playlist_data['title']
         }
         playlist_feed[playlist_name] = feed
         self.write(feed['feed'])
@@ -863,7 +866,10 @@ class ClearCacheHandler(web.RequestHandler):
         self.write(f"<option value='{ClearCacheHandler.NONE}' selected>{ClearCacheHandler.NONE}</option>")
         self.write(f"<option value='{ClearCacheHandler.ALL}'>{ClearCacheHandler.ALL}</option>")
         for playlist, info in playlist_feed.items():
-            self.write(f"<option value='{playlist}'>{playlist}</option>")
+            caption = playlist
+            if 'title' in info:
+                caption = f"{info['title']} ({caption})"
+            self.write(f"<option value='{playlist}'>{caption}</option>")
         self.write("</select>")
         self.write("<br/><br/>")
 
@@ -872,7 +878,10 @@ class ClearCacheHandler(web.RequestHandler):
         self.write(f"<option value='{ClearCacheHandler.NONE}' selected>{ClearCacheHandler.NONE}</option>")
         self.write(f"<option value='{ClearCacheHandler.ALL}'>{ClearCacheHandler.ALL}</option>")
         for channel, info in channel_feed.items():
-            self.write(f"<option value='{channel}'>{channel}</option>")
+            caption = channel
+            if 'title' in info:
+                caption = f"{info['title']} ({caption})"
+            self.write(f"<option value='{channel}'>{caption}</option>")
         self.write("</select>")
         self.write("<br/><br/>")
 
