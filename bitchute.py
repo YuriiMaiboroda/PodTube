@@ -26,7 +26,7 @@ class ChannelHandler(web.RequestHandler):
     def get(self, channel):
         # make/build RSS feed
         url = "https://bitchute.com/channel/%s/?showall=1" % channel
-        logging.info("Handling Bitchute channel: %s" % url)
+        logging.debug("Handling Bitchute channel: %s" % url)
         self.set_header('Content-type', 'application/rss+xml')
         feed = self.generate_rss( channel )
         self.write( feed )
@@ -35,13 +35,27 @@ class ChannelHandler(web.RequestHandler):
     def get_html( self, channel ):
         url = "https://bitchute.com/channel/%s/?showall=1" % channel
         logging.info("Bitchute URL: %s" % url)
-        r = requests.get( url )
+
+        # CloudFlare now blocking requests
+        heads = { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.104 Safari/537.36' }
+
+        r = requests.get( url, headers=heads )
         bs = BeautifulSoup( r.text, "lxml" )
-        html = str(bs.find("div", "container"))
-        return html
+        
+        if r.status_code == 403:
+            logging.error("CloudFlare blocked: %s" % url)
+            self.set_status(403)
+            return r.text
+        else:
+            html = str(bs.find("div", "container"))
+            return html
 
     def generate_rss( self, channel ):
         logging.info("Bitchute URL: %s" % channel)
+        html = self.get_html( channel )
+        if self.get_status() == 403:
+            return "Request responded: 403\r\n\r\n\r\n" + BeautifulSoup(html, 'lxml').get_text().replace('\n\n\n\n\n\n\n', '\n')
+
         bs = BeautifulSoup( self.get_html( channel ) , "lxml" )
 
         feed = FeedGenerator()

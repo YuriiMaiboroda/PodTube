@@ -1,5 +1,5 @@
 import datetime, logging, os, psutil, time
-import glob, requests
+import glob, requests, utils
 
 from configparser import ConfigParser, NoSectionError, NoOptionError
 from pathlib import Path
@@ -7,8 +7,6 @@ from feedgen.feed import FeedGenerator
 from pytube import YouTube, exceptions
 from tornado import gen, httputil, ioloop, iostream, process, web
 from tornado.locks import Semaphore
-
-import utils
 
 key = None
 cleanup_period = None
@@ -191,12 +189,14 @@ def get_youtube_url(video):
     if video in video_links and video_links[video]['expire'] > datetime.datetime.now():
         return video_links[video]['url']
     yturl = "https://www.youtube.com/watch?v=%s" % video
-    logging.info("Full URL: %s" % yturl)
+    logging.debug("Full URL: %s" % yturl)
+
     yt = YouTube(yturl)
-    # yt = YouTube(yturl, use_oauth=True, allow_oauth_cache=True)
+    # yt = YouTube(yturl, use_oauth=True, allow_oauth_cache=True) #Seems to fix the "KeyError: 'streamingData'" error - but why is this needed?
     logging.debug("Stream count: %s" % len(yt.streams))
     vid = yt.streams.get_highest_resolution().url
-    logging.debug("vid is now: %s" % vid)
+    logging.debug("Highest resultion URL: %s: " % vid)
+
     parts = {
         part.split('=')[0]: part.split('=')[1]
         for part in vid.split('?')[-1].split('&')
@@ -205,9 +205,8 @@ def get_youtube_url(video):
         'url': vid,
         'expire': datetime.datetime.fromtimestamp(int(parts['expire']))
     }
+
     video_links[video] = link
-    logging.info( "video: %s" % video )
-    logging.debug( "vid: %s" % vid )
     return link['url']
 
 class ChannelHandler(web.RequestHandler):
@@ -346,7 +345,7 @@ class ChannelHandler(web.RequestHandler):
                     chan=snippet['channelTitle']
                 except KeyError:
                     snippet['channelTitle'] = snippet['channelId']
-                    logging.info("Channel title not found")
+                    logging.error("Channel title not found")
                 
                 logging.debug(
                     'ChannelVideo: %s (%s)',
@@ -572,8 +571,10 @@ class PlaylistHandler(web.RequestHandler):
 
 class VideoHandler(web.RequestHandler):
     def get(self, video):
-        logging.info('Video: %s', video)
-        self.redirect(get_youtube_url(video))
+        logging.info('Getting Video: %s', video)
+        yt_url = get_youtube_url(video)
+        logging.debug("Got video URL: %s" % yt_url)
+        self.redirect( yt_url )
 
 class AudioHandler(web.RequestHandler):
     def initialize(self):
@@ -752,7 +753,7 @@ class UserHandler(web.RequestHandler):
         return channel_token
 
     def get(self, username):
-        logging.info('Handling Youtube channel by name: %s' % username)
+        logging.debug('Handling Youtube channel by name: %s' % username)
         append = None
         append_index = username.find('/')
         if append_index > -1:
