@@ -166,7 +166,7 @@ def convert_videos():
             os.rename(audio_file + '.temp', audio_file)
             logging.info('Successfully converted: %s', video)
         except Exception as ex:
-            logging.error('Error converting file: %s', ex)
+            logging.exception('Error converting file: %s', ex)
             if isinstance(ex, (exceptions.LiveStreamError, exceptions.VideoUnavailable)):
                 if video not in video_links:
                     video_links[video] = {
@@ -193,6 +193,7 @@ def get_youtube_url(video):
     yturl = "https://www.youtube.com/watch?v=%s" % video
     logging.info("Full URL: %s" % yturl)
     yt = YouTube(yturl)
+    # yt = YouTube(yturl, use_oauth=True, allow_oauth_cache=True)
     logging.debug("Stream count: %s" % len(yt.streams))
     vid = yt.streams.get_highest_resolution().url
     logging.debug("vid is now: %s" % vid)
@@ -383,7 +384,8 @@ class ChannelHandler(web.RequestHandler):
                     video = {'video': fe.id(), 'expire': fe.pubDate()}
         feed = {
             'feed': fg.rss_str(),
-            'expire': datetime.datetime.now() + datetime.timedelta(hours=calls)
+            'expire': datetime.datetime.now() + datetime.timedelta(hours=calls),
+            'title': channel_data['title']
         }
         for chan in channel_name:
             channel_feed[chan] = feed
@@ -448,7 +450,8 @@ class PlaylistHandler(web.RequestHandler):
             __version__,
             'https://github.com/amckee/PodTube'
         )
-        snippet = response['items'][0]['snippet']
+        playlist_data = response['items'][0]['snippet']
+        snippet = playlist_data
         icon = max(
             snippet['thumbnails'],
             key=lambda x: snippet['thumbnails'][x]['width']
@@ -550,7 +553,8 @@ class PlaylistHandler(web.RequestHandler):
                     video = {'video': fe.id(), 'expire': fe.pubDate()}
         feed = {
             'feed': fg.rss_str(),
-            'expire': datetime.datetime.now() + datetime.timedelta(hours=calls)
+            'expire': datetime.datetime.now() + datetime.timedelta(hours=calls),
+            'title': playlist_data['title']
         }
         playlist_feed[playlist_name] = feed
         self.write(feed['feed'])
@@ -788,8 +792,11 @@ class ClearCacheHandler(web.RequestHandler):
         channelFeed = self.get_argument(ClearCacheHandler.CHANNEL_FEED, ClearCacheHandler.NONE, True)
         channelNameToId = self.get_argument(ClearCacheHandler.CHANNEL_NAME_TO_ID, ClearCacheHandler.NONE, True)
 
+        needClear = False
+
         if any(element != ClearCacheHandler.NONE for element in [videoFile, videoLink, playlistFeed, channelFeed, channelNameToId]):
             logging.info('Force clear cache started (%s)', self.request.remote_ip)
+            needClear = True
 
         if (videoFile == ClearCacheHandler.ALL):
             for f in glob.glob('./audio/*mp3'):
@@ -842,6 +849,11 @@ class ClearCacheHandler(web.RequestHandler):
                 del channel_name_to_id[channelNameToId]
                 logging.info('Cleaned 1 items from channel name map')
 
+        if needClear:
+            selfurl = f'{self.request.protocol}://{self.request.host}{self.request.uri}'
+            self.redirect( selfurl, permanent = False )
+            return
+
         self.write(f'<html><head><title>PodTube (v{__version__}) cache</title>')
         self.write('<link rel="shortcut icon" href="favicon.ico">')
         self.write('</head><body>')
@@ -863,7 +875,10 @@ class ClearCacheHandler(web.RequestHandler):
         self.write(f"<option value='{ClearCacheHandler.NONE}' selected>{ClearCacheHandler.NONE}</option>")
         self.write(f"<option value='{ClearCacheHandler.ALL}'>{ClearCacheHandler.ALL}</option>")
         for playlist, info in playlist_feed.items():
-            self.write(f"<option value='{playlist}'>{playlist}</option>")
+            caption = playlist
+            if 'title' in info:
+                caption = f"{info['title']} ({caption})"
+            self.write(f"<option value='{playlist}'>{caption}</option>")
         self.write("</select>")
         self.write("<br/><br/>")
 
@@ -872,7 +887,10 @@ class ClearCacheHandler(web.RequestHandler):
         self.write(f"<option value='{ClearCacheHandler.NONE}' selected>{ClearCacheHandler.NONE}</option>")
         self.write(f"<option value='{ClearCacheHandler.ALL}'>{ClearCacheHandler.ALL}</option>")
         for channel, info in channel_feed.items():
-            self.write(f"<option value='{channel}'>{channel}</option>")
+            caption = channel
+            if 'title' in info:
+                caption = f"{info['title']} ({caption})"
+            self.write(f"<option value='{channel}'>{caption}</option>")
         self.write("</select>")
         self.write("<br/><br/>")
 
