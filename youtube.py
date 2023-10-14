@@ -524,11 +524,12 @@ class PlaylistHandler(web.RequestHandler):
                 fe = fg.add_entry()
                 fe.title(snippet['title'])
                 fe.id(current_video)
-                icon = max(
-                    snippet['thumbnails'],
-                    key=lambda x: snippet['thumbnails'][x]['width']
-                )
-                fe.podcast.itunes_image(snippet['thumbnails'][icon]['url'])
+                if snippet['thumbnails']:
+                    icon = max(
+                        snippet['thumbnails'],
+                        key=lambda x: snippet['thumbnails'][x]['width']
+                    )
+                    fe.podcast.itunes_image(snippet['thumbnails'][icon]['url'])
                 fe.updated(snippet['publishedAt'])
                 final_url = None
                 if playlist[1] == 'video':
