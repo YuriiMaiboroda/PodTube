@@ -10,7 +10,6 @@ ADD ./ /opt/
 RUN apt update
 RUN apt install -y nano
 RUN pip install misaka psutil requests feedgen tornado urllib3 pytz bs4
-RUN python -m pip install git+https://github.com/pytube/pytube
-RUN patch --ignore-whitespace --fuzz=3 -u /usr/local/lib/python3.10/site-packages/pytube/cipher.py -i /opt/cipher.patch
+RUN pip install git+https://github.com/YuriiMaiboroda/pytube@fixes
 
 CMD python /opt/podtube.py

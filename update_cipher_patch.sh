@@ -7,4 +7,4 @@
 # changes to cipher are being made in cipher.new.py to keep the pip
 # installed version untouched and allow for patch creation. the patch
 # created here is applied upon docker container creation.
-diff -u ~/.local/lib/python3.10/site-packages/pytube/cipher.py cipher.new.py > cipher.patch
+# diff -u ~/.local/lib/python3.10/site-packages/pytube/cipher.py cipher.new.py > cipher.patch
