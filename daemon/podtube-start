@@ -2,4 +2,5 @@
 SCRIPTPATH=$(dirname "$(realpath "$0")")
 . $SCRIPTPATH/const-paths
 
+mkdir -p $DIRDL
 python $DIR/podtube.py --log-file $LOG_FILE_PATH --config-file $CONFIG_FILE

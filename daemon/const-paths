@@ -8,3 +8,4 @@ LOG_FILE_PATH=$DIRDL/podtube.log
 DAEMON_OUT=$DIRDL/out.log
 DAEMON_ERR=$DIRDL/err.log
 CONFIG_FILE=$DIR/config.ini
+BASH_PATH=/bin/bash
