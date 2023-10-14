@@ -12,7 +12,7 @@ import log_output
 from tornado import ioloop, web
 
 # Handled automatically by git pre-commit hook
-__version__ = '2023.04.26.1'
+__version__ = '2023.08.23.3'
 
 class FileHandler(web.RequestHandler):
     def get(self):

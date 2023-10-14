@@ -6,7 +6,10 @@ from feedgen.feed import FeedGenerator
 from bs4 import BeautifulSoup
 from tornado import web
 
+headers = { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.104 Safari/537.36' }
+
 class ChannelHandler(web.RequestHandler):
+
     def head(self, channel):
         self.set_header('Content-type', 'application/rss+xml')
         self.set_header('Accept-Ranges', 'bytes')
@@ -25,7 +28,7 @@ class ChannelHandler(web.RequestHandler):
     def get_html( self, channel ):
         url = "https://rumble.com/c/%s" % channel
         logging.info("Rumble URL: %s" % url)
-        r = requests.get( url )
+        r = requests.get( url, headers=headers )
         bs = BeautifulSoup( r.text, "lxml" )
         html = str( bs.find("main") )
         return html
@@ -39,13 +42,13 @@ class ChannelHandler(web.RequestHandler):
 
         ## Get Channel Info
         try:
-            feed.title( bs.find("div", "listing-header--title").find("h1").text )
+            feed.title( bs.find("div", "channel-header--title").find("h1").text )
         except:
             logging.error("Failed to pull channel title. Using provided channel instead")
             feed.title( channel )
 
         try:
-            thumb = bs.find("img", "listing-header--thumb")['src']
+            thumb = bs.find("img", "channel-header--thumb")['src']
             if thumb is not None:
                 feed.image( thumb )
         except:
@@ -121,7 +124,7 @@ class UserHandler(web.RequestHandler):
     def get_html( self, user ):
         url = "https://rumble.com/user/%s" % user
         logging.info("Rumble URL: %s" % url)
-        r = requests.get( url )
+        r = requests.get( url, headers=headers )
         bs = BeautifulSoup( r.text, 'lxml' )
         html = str( bs.find("main") )
         return html
@@ -137,10 +140,14 @@ class UserHandler(web.RequestHandler):
         try:
             feed.title( bs.find("div", "listing-header--title").find("h1").text )
         except:
-            logging.info("Failed to pull channel title. Using provided channel instead")
+            logging.info("Failed to pull user title.")
             feed.title( channel )
 
-        feed.image( bs.find("img", "listing-header--thumb")['src'] )
+        try:
+            feed.image( bs.find("img", "listing-header--thumb")['src'] )
+        except:
+            logging.info("Failed to pull user thumbnail.")
+
         feed.description( "--" )
         feed.id( user )
         feed.link(
@@ -199,9 +206,9 @@ class CategoryHandler(web.RequestHandler):
         self.finish()
 
     def get_html(self, category):
-        url = "https://rumble.com/category/%s" % category
+        url = "https://rumble.com/category/%s/recorded" % category
         logging.info("Rumble URL: %s" % url)
-        r = requests.get( url )
+        r = requests.get( url, headers=headers )
         bs = BeautifulSoup( r.text, 'lxml' )
         html = str( bs.find("main") )
         return html
@@ -214,7 +221,7 @@ class CategoryHandler(web.RequestHandler):
         feed.load_extension('podcast')
 
         try:
-            feed.title( "Rumble: %s" % bs.find("div", "listing-header--title").text )
+            feed.title( "Rumble: %s" % bs.find("h1", "header__heading").text.strip() )
         except:
             logging.error( "Failed to pull category name" )
             feed.title( category )
@@ -228,36 +235,37 @@ class CategoryHandler(web.RequestHandler):
         feed.language('en')
 
         ## Assemble RSS items list
-        videos = bs.find("div", "main-and-sidebar").find("ol").find_all("li")
+        videos = bs.find("ol", "recordedstreams").find_all("li")
         for video in videos:
             ## Check for and skip live videos and upcomming videos
             if video.find("span", "video-item--live") or video.find("span", "video-item--upcoming"):  ##['data-value'] == "LIVE":
                 continue
 
             item = feed.add_entry()
-            item.title( video.find("h3", "video-item--title").text )
-            item.description( video.find("div", "ellipsis-1").text )
-            
-            lnk = video.find("a", "video-item--a")
+            item.title( video.find("h3", "videostream__title").text.strip() )
+            item.description( video.find("span", "channel__name").text.strip() )
+
+            lnk = video.find("a", "videostream__link")
             vid = lnk['href']
             link = f'http://{self.request.host}/rumble/video' + vid
-            icon = video.find( "img", "video-item--img" )['src']
+            icon = video.find( "img", "videostream__image" )['src']
             item.podcast.itunes_image( icon )
             item.link(
                 href = link,
                 title = item.title()
             )
 
-            dateformat = "%Y-%m-%d %H:%M:%S"
-            viddatetime = video.find("time", "video-item--meta")['datetime']
-            viddate = viddatetime.split('T')[0]
-            vidtime = viddatetime.split('T')[1]
-            vidtime = vidtime.split('-')[0]
-            vidpubdate = viddate + " " + vidtime
-            date = datetime.datetime.strptime( vidpubdate, dateformat ).astimezone( pytz.utc )
-            item.pubDate( date )
+            ## No longer given, leaving this code here in case in comes back in the future
+            # dateformat = "%Y-%m-%d %H:%M:%S"
+            # viddatetime = video.find("time", "video-item--meta")['datetime']
+            # viddate = viddatetime.split('T')[0]
+            # vidtime = viddatetime.split('T')[1]
+            # vidtime = vidtime.split('-')[0]
+            # vidpubdate = viddate + " " + vidtime
+            # date = datetime.datetime.strptime( vidpubdate, dateformat ).astimezone( pytz.utc )
+            # item.pubDate( date )
 
-            item.podcast.itunes_duration( video.find('span', 'video-item--duration')['data-value'] )
+            # item.podcast.itunes_duration( video.find('span', 'video-item--duration')['data-value'] )
 
             item.enclosure(
                 url = link,
@@ -270,12 +278,15 @@ def get_rumble_url( video, bitrate=None ):
     logging.debug( "Getting URL: %s" % url )
 
     ## first, we need to get the embed url from the data set
-    r = requests.get( url )
+    headers = { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.104 Safari/537.36' }
+    r = requests.get( url, headers=headers )
 
     # Check for errors from Rumble directly
     if r.status_code == 410:
+        logging.error( "Rumble returned 410: Not found" )
         return url
     elif r.status_code == 403:
+        logging.error( "Rumble returned 403: Forbidden" )
         return url
 
     bs = BeautifulSoup( r.text, 'lxml' )
@@ -292,7 +303,7 @@ def get_rumble_url( video, bitrate=None ):
     ## tricky stuff that will likely break a lot
     ## but we need to parse out values within a javascript function
     ## and remove escape backslashes
-    r = requests.get( vidurl )
+    r = requests.get( vidurl, headers=headers )
     bs = BeautifulSoup( r.text, 'lxml' )
     el = bs.find("script").string
 
@@ -300,40 +311,66 @@ def get_rumble_url( video, bitrate=None ):
     vidurl = None
     preparsedvids = None
 
-    ## need multiple regexes to find usable json
+    # Using regex, grab the entire json data set from the javascript function.
+    # Note: Expect this to break as Rumble makes more changes.
+    regexSearch = None
+    try:
+        regexSearch = re.search( r';[b|f|h|v]\.f\["%s"\]=.*:[a|d]\(\)\}' % embedVidID, el ).group().replace( r';b.f["%s"]=' % embedVidID, '' ).replace( r';f.f["%s"]=' % embedVidID, '' ).replace( r';h.f["%s"]=' % embedVidID, '' ).replace( r';v.f["%s"]=' % embedVidID, '').replace( r',loaded:d()', '' ).replace( r',loaded:a()', '' )
+    except:
+        pass
 
-    # regex #1
-    regexSearch = re.search( r'"ua":\{"mp4":.+\}\}\},', el )
+    # try: #again
+    #     regexSearch = re.search( )
+    vidInfo = None
+
     if regexSearch is not None:
-        try:
-            vids = json.loads( regexSearch.group(0).replace(r'"ua":{"mp4":', '[').split('"timeline"')[0].replace(r'}}},', '}}}]') )
-            logging.debug("First json regex worked")
-        except:
-            logging.debug("Trying second json regex")
-            vids = json.loads( regexSearch.group(0).replace(r'"ua":{"mp4":', '[').split('"timeline"')[0].replace(r'}}}},', '}}}]') )
+        vidInfo = json.loads( regexSearch )
+        logging.debug("Successfully parsed JSON data")
+        for thing in ('ua', 'u'):
+            if thing in vidInfo:
+                if 'mp4' in vidInfo[thing]:
+                    if '360' in vidInfo[thing]['mp4']:
+                        logging.info('Found 360p video')
+                        vidurl = vidInfo[thing]['mp4']['360']['url']
+                    elif '480' in vidInfo[thing]['mp4']:
+                        logging.info('Found 480p video')
+                        vidurl = vidInfo[thing]['mp4']['480']['url']
 
-    if bitrate is not None:
-        # find the requested bitrate video
-        for vid in vids[0]:
-            ## handle bitrate requests
-            if vid == bitrate:
-                vidurl = vid['url']
-                break
-    else:
-        # find a default bitrate video. 240p first, 360p second, anything at all third
-        for res in ('240', '360'):
-            vid = vids[0].get(res)
-            if vid is not None:
-                logging.info("Grabbing %sp video" % res)
-                vidurl = vid['url']
-                break
-        
-        if vidurl is None:
-            for vid in vids[0]:
-                if vids[0][vid]['url'] is not None:
-                    logging.info("Grabbing %sp format" % vid)
-                    vidurl = vids[0][vid]['url']
+        # if vidurl is None:
+        #     if 'u' in vidInfo:
+        #         if 'mp4' in vidInfo['u']:
+        #             if 'url' in vidInfo['u']['mp4']:
+        #                 logging.info('Found generic mp4')
+        #                 vidurl = vidInfo['u']['mp4']['url']
+
+    ## Fallback method, in case the above code failed to find anything
+    if vidurl is None:
+        logging.info("Using fallback Rumble 'geturl' method")
+        if bitrate is not None:
+            # find the requested bitrate video
+            for vid in vidInfo[0]:
+                ## handle bitrate requests
+                if vid == bitrate:
+                    vidurl = vid['url']
                     break
+        else:
+            # find a default bitrate video. 240p first, 360p second, anything at all third
+            for res in ('240', '360', '480'):
+                if res in vidInfo[0]:
+                    vid = vidInfo[0].get(res)
+                    if vid is not None:
+                        logging.info("Grabbing %sp video" % res)
+                        vidurl = vid['url']
+                        break
+                else:
+                    logging.info("%s not found in video JSON" % res)
+                
+            if vidurl is None:
+                for vid in vidInfo[0]:
+                    if vidInfo[0][vid]['url'] is not None:
+                        logging.info("Grabbing %sp format" % vid)
+                        vidurl = vidInfo[0][vid]['url']
+                        break
 
     if vidurl is None:
         logging.error( "Failed to get video: %s" % video)
