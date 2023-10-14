@@ -1,7 +1,7 @@
-import datetime, logging, os, psutil, time
+import datetime, logging, os, time
 import glob, requests, utils
 
-from configparser import ConfigParser, NoSectionError, NoOptionError
+from configparser import ConfigParser
 from pathlib import Path
 from feedgen.feed import FeedGenerator
 from pytube import YouTube, exceptions
@@ -108,7 +108,7 @@ def cleanup():
         )
     # Space Check
     expired_time = time.time() - (AUDIO_EXPIRATION_TIME / 1000)
-    for f in sorted(glob.glob('./audio/*mp3'), key=lambda a_file: os.path.getctime(a_file)):
+    for f in sorted(glob.glob('./audio/*mp3') + glob.glob('./video/*mp4'), key=lambda a_file: os.path.getctime(a_file)):
         ctime = os.path.getctime(f)
         if ctime <= expired_time:
             try:
@@ -139,20 +139,10 @@ def convert_videos():
     except Exception:
         return
     with (yield converting_lock.acquire()):
-        logging.info('Converting: %s', video)
-        audio_file = './audio/{}.mp3'.format(video)
+        logging.info('Start downloading: %s', video)
         try:
-            yutubeUrl = get_youtube_url(video)
-            ffmpeg_process = process.Subprocess([
-                'ffmpeg',
-                '-loglevel', 'panic',
-                '-y',
-                '-i', yutubeUrl,
-                '-f', 'mp3', audio_file + '.temp'
-            ])
-            yield ffmpeg_process.wait_for_exit()
-            os.rename(audio_file + '.temp', audio_file)
-            logging.info('Successfully converted: %s', video)
+            yield download_youtube_audio(video)
+            logging.info('Successfully downloaded: %s', video)
         except Exception as ex:
             logging.exception('Error converting file: %s', ex)
             if isinstance(ex, (exceptions.LiveStreamError, exceptions.VideoUnavailable)):
@@ -162,49 +152,134 @@ def convert_videos():
                         'expire': datetime.datetime.now() + datetime.timedelta(hours=6)
                     }
                 video_links[video]['unavailable'] = True
+        finally:
+            del conversion_queue[video]
+
+async def download_youtube_audio(video) -> bool:
+    yturl = get_youtube_url(video)
+    logging.debug("Full URL: %s", yturl)
+
+    audio_file = './audio/%s.mp3' % video
+    audio_file_temp = audio_file + '.temp'
+    video_file = None
+
+    try:
+        logging.debug('Start downloading audio stream: %s', video)
+        raise Exception("test")
+
+        yt = YouTube(yturl, use_oauth=True, allow_oauth_cache=True)
+        if logging.root.isEnabledFor(logging.DEBUG):
+            yt.register_on_progress_callback(
+                lambda stream, chunk, bytes_remaining:
+                    logging.debug('Downloading audio %s: downloaded %s, remain %s', video, len(chunk), bytes_remaining)
+            )
+        yt.streams.get_audio_only().download(filename=audio_file_temp)
+
+        try:
+            os.rename(audio_file_temp, audio_file)
+        except (OSError, SystemError) as e:
+            logging.error('Error rename temp file: %s', e)
+            raise e
+
+        logging.debug('Successfully downloaded audio: %s', video)
+
+    except (OSError, SystemError) as e:
+        raise e
+
+    except Exception as e:
+        logging.debug( "Error returned by Youtube: %s", e )
+        try:
+            try:
+                if os.path.exists(audio_file_temp):
+                    os.remove(audio_file_temp)
+                if os.path.exists(audio_file):
+                    os.remove(audio_file)
+            except Exception as e2:
+                logging.error('Error remove file: %s', e2)
+                raise e2
+
+            video_file = download_youtube_video(video)
+
+            logging.debug('Start converting video: %s', video)
+            ffmpeg_process = process.Subprocess([
+                'ffmpeg',
+                '-loglevel', 'panic',
+                '-y',
+                '-i', video_file,
+                '-f', 'mp3', audio_file_temp
+            ])
+            await ffmpeg_process.wait_for_exit()
+
+            try:
+                os.rename(audio_file_temp, audio_file)
+            except (OSError, SystemError) as e:
+                logging.error('Error rename temp file: %s', e)
+                raise e
+
+            logging.debug('Successfully converted video: %s', video)
+
+        except Exception as e2:
             try:
                 if os.path.exists(audio_file):
                     os.remove(audio_file)
-            except Exception as ex2:
-                logging.error('Error remove broken file: %s', ex2)
-        finally:
-            del conversion_queue[video]
-            try:
-                if os.path.exists(audio_file + '.temp'):
-                    os.remove(audio_file + '.temp')
-            except Exception as ex2:
-                logging.error('Error remove temp file: %s', ex2)
+            except Exception as e3:
+                logging.error('Error remove temp file: %s', e3)
+            raise e2
 
-def get_youtube_url(video):
-    if video in video_links and video_links[video]['expire'] > datetime.datetime.now():
-        return video_links[video]['url']
-    yturl = "https://www.youtube.com/watch?v=%s" % video
-    logging.debug("Full URL: %s" % yturl)
+    finally:
+        try:
+            if os.path.exists(audio_file_temp):
+                os.remove(audio_file_temp)
+            if video_file and os.path.exists(video_file):
+                os.remove(video_file)
+        except Exception as e:
+            logging.error('Error remove temp file: %s', e)
 
-    yt = None
+    return True
+
+def download_youtube_video(video) -> str:
+    yturl = get_youtube_url(video)
+    logging.debug("Full URL: %s", yturl)
+
+    video_file = './video/%s.mp4' % video
+    video_file_temp = video_file + '.temp'
 
     try:
-        yt = YouTube(yturl)
-        # yt = YouTube(yturl, use_oauth=True, allow_oauth_cache=True) #Seems to fix the "KeyError: 'streamingData'" error - but why is this needed?
+        logging.debug('Start downloading video stream: %s', video)
+        
+        yt = YouTube(yturl, use_oauth=True, allow_oauth_cache=True)
+        if logging.root.isEnabledFor(logging.DEBUG):
+            yt.register_on_progress_callback(
+                lambda stream, chunk, bytes_remaining:
+                    logging.debug('Downloading video %s: downloaded %s, remain %s', video, len(chunk), bytes_remaining)
+            )
+        logging.debug( "Stream count: %s", len(yt.streams))
+        stream = yt.streams.get_by_resolution("720p", progressive=False)
+        if not stream:
+            stream = yt.streams.get_highest_resolution(progressive=False)
+        stream.download(filename=video_file_temp)
+
+        os.rename(video_file_temp, video_file)
+        logging.debug('Successfully downloaded video: %s', video)
+
     except Exception as e:
-        logging.error( "Error returned by Youtube: %s - %s" % (e.status, e.msg) )
-        return e
+        try:
+            if os.path.exists(video_file):
+                os.remove(video_file)
+        except Exception as ex2:
+            logging.error('Error remove temp file: %s', ex2)
+        raise e
 
-    logging.debug( "Stream count: %s" % len(yt.streams) )
-    vid = yt.streams.get_highest_resolution().url
-    logging.debug( "Highest resultion URL: %s: " % vid )
+    finally:
+        try:
+            if os.path.exists(video_file_temp):
+                os.remove(video_file_temp)
+        except Exception as ex2:
+            logging.error('Error remove temp file: %s', ex2)
+    return video_file
 
-    parts = {
-        part.split('=')[0]: part.split('=')[1]
-        for part in vid.split('?')[-1].split('&')
-    }
-    link = {
-        'url': vid,
-        'expire': datetime.datetime.fromtimestamp(int(parts['expire']))
-    }
-
-    video_links[video] = link
-    return link['url']
+def get_youtube_url(video: str) -> str:
+    return "https://www.youtube.com/watch?v=%s" % video
 
 class ChannelHandler(web.RequestHandler):
     def initialize(self, video_handler_path: str, audio_handler_path: str):
@@ -783,6 +858,7 @@ class ClearCacheHandler(web.RequestHandler):
     NONE = "NONE"
 
     VIDEO_FILES = "VIDEO_FILES"
+    AUDIO_FILES = "AUDIO_FILES"
     VIDEO_LINKS = "VIDEO_LINKS"
     PLAYLIST_FEED = "PLAYLIST_FEED"
     CHANNEL_FEED = "CHANNEL_FEED"
@@ -795,6 +871,7 @@ class ClearCacheHandler(web.RequestHandler):
         global video_links, playlist_feed, channel_feed, channel_name_to_id
 
         videoFile = self.get_argument(ClearCacheHandler.VIDEO_FILES, ClearCacheHandler.NONE, True)
+        audioFile = self.get_argument(ClearCacheHandler.AUDIO_FILES, ClearCacheHandler.NONE, True)
         videoLink = self.get_argument(ClearCacheHandler.VIDEO_LINKS, ClearCacheHandler.NONE, True)
         playlistFeed = self.get_argument(ClearCacheHandler.PLAYLIST_FEED, ClearCacheHandler.NONE, True)
         channelFeed = self.get_argument(ClearCacheHandler.CHANNEL_FEED, ClearCacheHandler.NONE, True)
@@ -802,19 +879,34 @@ class ClearCacheHandler(web.RequestHandler):
 
         needClear = False
 
-        if any(element != ClearCacheHandler.NONE for element in [videoFile, videoLink, playlistFeed, channelFeed, channelNameToId]):
+        if any(element != ClearCacheHandler.NONE for element in [videoFile, audioFile, videoLink, playlistFeed, channelFeed, channelNameToId]):
             logging.info('Force clear cache started (%s)', self.request.remote_ip)
             needClear = True
 
         if (videoFile == ClearCacheHandler.ALL):
-            for f in glob.glob('./audio/*mp3'):
+            for f in glob.glob('./video/*mp4'):
                 try:
                     os.remove(f)
                     logging.info('Deleted %s', f)
                 except Exception as e:
                     logging.error('Error remove file %s: %s', f, e)
         elif videoFile != ClearCacheHandler.NONE:
-            f = f"./audio/{videoFile}"
+            f = f"./video/{videoFile}"
+            try:
+                os.remove(f)
+                logging.info('Deleted %s', f)
+            except Exception as e:
+                logging.error('Error remove file %s: %s', f, e)
+
+        if (audioFile == ClearCacheHandler.ALL):
+            for f in glob.glob('./audio/*mp3'):
+                try:
+                    os.remove(f)
+                    logging.info('Deleted %s', f)
+                except Exception as e:
+                    logging.error('Error remove file %s: %s', f, e)
+        elif audioFile != ClearCacheHandler.NONE:
+            f = f"./audio/{audioFile}"
             try:
                 os.remove(f)
                 logging.info('Deleted %s', f)
@@ -915,6 +1007,27 @@ class ClearCacheHandler(web.RequestHandler):
         self.write(f"<select id='{ClearCacheHandler.VIDEO_FILES}' name='{ClearCacheHandler.VIDEO_FILES}'>")
         self.write(f"<option value='{ClearCacheHandler.NONE}' selected>{ClearCacheHandler.NONE}</option>")
         self.write(f"<option value='{ClearCacheHandler.ALL}'>{ClearCacheHandler.ALL}</option>")
+        for f in sorted(glob.glob('./video/*mp4'), key=lambda a_file: os.path.getctime(a_file)):
+            size = os.path.getsize(f)
+            if size > 10**12:
+                size = str(size // 2**40) + 'TiB'
+            elif size > 10**9:
+                size = str(size // 2**30) + 'GiB'
+            elif size > 10**6:
+                size = str(size // 2**20) + 'MiB'
+            elif size > 10**3:
+                size = str(size // 2**10) + 'KiB'
+            else:
+                size = str(size) + 'B'
+            f = os.path.basename(f)
+            self.write(f"<option value='{f}'>{f} ({size})</option>")
+        self.write("</select>")
+        self.write("<br/><br/>")
+
+        self.write(f"<label for='{ClearCacheHandler.AUDIO_FILES}'>Cached audio files: </label>")
+        self.write(f"<select id='{ClearCacheHandler.AUDIO_FILES}' name='{ClearCacheHandler.AUDIO_FILES}'>")
+        self.write(f"<option value='{ClearCacheHandler.NONE}' selected>{ClearCacheHandler.NONE}</option>")
+        self.write(f"<option value='{ClearCacheHandler.ALL}'>{ClearCacheHandler.ALL}</option>")
         for f in sorted(glob.glob('./audio/*mp3'), key=lambda a_file: os.path.getctime(a_file)):
             size = os.path.getsize(f)
             if size > 10**12:
@@ -931,6 +1044,7 @@ class ClearCacheHandler(web.RequestHandler):
             self.write(f"<option value='{f}'>{f} ({size})</option>")
         self.write("</select>")
         self.write("<br/><br/>")
+
         self.write("<input type='submit' value='CLEAR SELECTED CACHE' />")
         self.write("</form>")
         self.write("<br/>")

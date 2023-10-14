@@ -129,6 +129,7 @@ ENV/
 
 *.temp
 audio/
+video/
 
 .history
 .vscode
