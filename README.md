@@ -123,8 +123,6 @@ api_key=YOUTUBE_API_KEY
 cleanup_period=600000
 convert_video_period=1000
 audio_expiration_time=259200000 # 3 days in seconds
-start_cleanup_size_threshold=536870912 # 0.5GiB
-stop_cleanup_size_threshold=16106127360 # 15GiB
 autoload_newest_audio=1
 ```
 
@@ -136,8 +134,6 @@ autoload_newest_audio=1
 | cleanup_period | YT_CLEANUP_PERIOD | `600000` | int | Periodicity of the call to the cache clearing function. In milliseconds |
 | convert_video_period | YT_CONVERT_VIDEO_PERIOD | `1000` | int | Periodicity of calling the function of converting video to audio. In milliseconds |
 | audio_expiration_time | YT_AUDIO_EXPIRATION_TIME | `259200000` | int | Expiration time of stored files |
-| start_cleanup_size_threshold | YT_START_CLEANUP_SIZE_THRESHOLD | `536870912` | int | The minimum required amount of space in the `./audio` folder. If there is not enough free space, the oldest files will be deleted until there is enough space |
-| stop_cleanup_size_threshold | YT_STOP_CLEANUP_SIZE_THRESHOLD | `16106127360` | int | Enough space threshold |
 | autoload_newest_audio | YT_AUTOLOAD_NEWEST_AUDIO | `True` | bool | Whether to automatically download the newest audio when updating the rss feed |
 
 ## License
