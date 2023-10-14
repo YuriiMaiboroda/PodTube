@@ -36,14 +36,7 @@ def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str
 
 def make_app(config: ConfigParser):
     youtube.init(config)
-    job_logger = logging.getLogger()
-    handler = job_logger.handlers[0]
-    log_filename = os.path.basename(handler.baseFilename)
-    log_folder = "." + os.path.sep + os.path.dirname(os.path.relpath(handler.baseFilename)) + os.path.sep
-    # logging.info(f'log baseFilename: {handler.baseFilename}')
-    # logging.info(f'log file name: {log_filename}')
-    # logging.info(f'log folder: {log_folder}')
-    webapp = web.Application([
+    handlers = [
         (r'/youtube/channel/(.*)', youtube.ChannelHandler, {
             'video_handler_path': '/youtube/video/',
             'audio_handler_path': '/youtube/audio/',
@@ -64,13 +57,24 @@ def make_app(config: ConfigParser):
         (r'/bitchute/video/(.*)', bitchute.VideoHandler),
         (r'/dailymotion/channel/(.*)', dailymotion.ChannelHandler),
         (r'/dailymotion/video/(.*)', dailymotion.VideoHandler),
-        (r'/log/(.*)', log_output.LogFileHandler, {'path': log_folder, 'default_filename': log_filename}),
         (r'/config.ini', web.RedirectHandler, {'url': '/'}),
         (r'/README.md', web.RedirectHandler, {'url': '/'}),
         (r'/Dockerfile', web.RedirectHandler, {'url': '/'}),
         (r'/', FileHandler),
         (r'/(.*)', web.StaticFileHandler, {'path': '.'})
-    ], compress_response=True)
+    ]
+    
+    job_logger = logging.getLogger()
+    log_handler = job_logger.handlers[0]
+    if log_handler and log_handler is FileHandler:
+        log_filename = os.path.basename(log_handler.baseFilename)
+        log_folder = "." + os.path.sep + os.path.dirname(os.path.relpath(log_handler.baseFilename)) + os.path.sep
+        # logging.info(f'log baseFilename: {handler.baseFilename}')
+        # logging.info(f'log file name: {log_filename}')
+        # logging.info(f'log folder: {log_folder}')
+        handlers.append((r'/log/(.*)', log_output.LogFileHandler, {'path': log_folder, 'default_filename': log_filename}))
+
+    webapp = web.Application(handlers, compress_response=True)
     return webapp
 
 if __name__ == '__main__':
@@ -98,7 +102,7 @@ if __name__ == '__main__':
         type=str,
         help='Location and name of log file'
     )
-    defaults["log_file"] = '/dev/stdout'
+    defaults["log_file"] = None
     parser.add_argument(
         '--log-format',
         type=str,
