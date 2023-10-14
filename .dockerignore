@@ -1,4 +1,3 @@
-config.ini
 __pycache__
 .github
 .vscode
@@ -7,3 +6,4 @@ disabled
 .gitignore
 fly.toml
 podtube.log
+google

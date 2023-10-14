@@ -5,3 +5,4 @@ requests_html
 feedgen
 tornado
 pytz
+pytube @ git+https://github.com/YuriiMaiboroda/pytube@fixes
