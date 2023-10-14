@@ -165,7 +165,6 @@ async def download_youtube_audio(video) -> bool:
 
     try:
         logging.debug('Start downloading audio stream: %s', video)
-        raise Exception("test")
 
         yt = YouTube(yturl, use_oauth=True, allow_oauth_cache=True)
         if logging.root.isEnabledFor(logging.DEBUG):
