@@ -116,8 +116,6 @@ def cleanup():
                 logging.info('Deleted %s', f)
             except Exception as ex:
                 logging.error('Error remove file %s: %s', f, ex)
-            if not time_clean and size_clean and size.free > stop_cleanup_size_threshold:
-                break
         else:
             break
 
