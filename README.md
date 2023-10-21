@@ -128,13 +128,15 @@ autoload_newest_audio=1
 
 ### Youtube configuration
 
-| config | env | default value | type | description |
-| --- | --- | --- | --- | --- |
-| api_key | YT_API_KEY | `None` | string | A Google API Key. See [documentation][google_api_key_doc] |
-| cleanup_period | YT_CLEANUP_PERIOD | `600000` | int | Periodicity of the call to the cache clearing function. In milliseconds |
-| convert_video_period | YT_CONVERT_VIDEO_PERIOD | `1000` | int | Periodicity of calling the function of converting video to audio. In milliseconds |
-| audio_expiration_time | YT_AUDIO_EXPIRATION_TIME | `259200000` | int | Expiration time of stored files |
-| autoload_newest_audio | YT_AUTOLOAD_NEWEST_AUDIO | `True` | bool | Whether to automatically download the newest audio when updating the rss feed |
+| config                   | environment variable     | default value | type   | description                                                                       |
+| ---------------------    | ------------------------ | ------------- | ------ | --------------------------------------------------------------------------------- |
+| yt_api_key               | YT_API_KEY               | `None`        | string | A Google API Key. See [documentation][google_api_key_doc]                         |
+| yt_http_proxy            | YT_HTTP_PROXY            | `None`        | string | An address for proxy (`http`, `https`, `socks5`) for `http` requests              |
+| yt_https_proxy           | YT_HTTPS_PROXY           | `None`        | string | An address for proxy (`http`, `https`, `socks5`) for `https` requests             |
+| yt_cleanup_period        | YT_CLEANUP_PERIOD        | `600000`      | int    | Periodicity of the call to the cache clearing function. In milliseconds           |
+| yt_convert_video_period  | YT_CONVERT_VIDEO_PERIOD  | `1000`        | int    | Periodicity of calling the function of converting video to audio. In milliseconds |
+| yt_audio_expiration_time | YT_AUDIO_EXPIRATION_TIME | `259200000`   | int    | Expiration time of stored files                                                   |
+| yt_autoload_newest_audio | YT_AUTOLOAD_NEWEST_AUDIO | `True`        | bool   | Whether to automatically download the newest audio when updating the rss feed     |
 
 ## License
 [BSD-2-Clause](./LICENSE)

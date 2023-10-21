@@ -13,6 +13,9 @@ CLEANUP_PERIOD = None
 CONVERT_VIDEO_PERIOD = None
 AUDIO_EXPIRATION_TIME = None
 AUTOLOAD_NEWEST_AUDIO = None
+HTTP_PROXY = None
+HTTPS_PROXY = None
+PROXIES = None
 
 video_links = {}
 playlist_feed = {}
@@ -28,14 +31,24 @@ def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str
     return utils.get_env_or_config_option(conf, env_name, config_name, "youtube", default_value=default_value)
 
 def init(conf: ConfigParser):
-    global KEY, CLEANUP_PERIOD, CONVERT_VIDEO_PERIOD, AUDIO_EXPIRATION_TIME, AUTOLOAD_NEWEST_AUDIO
-    KEY                          = str(get_env_or_config_option(conf, "YT_API_KEY"                     , "api_key"                     , default_value=None))
-    CLEANUP_PERIOD               = int(get_env_or_config_option(conf, "YT_CLEANUP_PERIOD"              , "cleanup_period"              , default_value=600000)) # 10 minutes
-    CONVERT_VIDEO_PERIOD         = int(get_env_or_config_option(conf, "YT_CONVERT_VIDEO_PERIOD"        , "convert_video_period"        , default_value=1000)) # 1 second
-    AUDIO_EXPIRATION_TIME        = int(get_env_or_config_option(conf, "YT_AUDIO_EXPIRATION_TIME"       , "audio_expiration_time"       , default_value=259200000)) # 3 days
-    AUTOLOAD_NEWEST_AUDIO        =     get_env_or_config_option(conf, "YT_AUTOLOAD_NEWEST_AUDIO"       , "autoload_newest_audio"       , default_value=True)
+    global KEY, CLEANUP_PERIOD, CONVERT_VIDEO_PERIOD, AUDIO_EXPIRATION_TIME, AUTOLOAD_NEWEST_AUDIO, HTTP_PROXY, HTTPS_PROXY, PROXIES, USE_OAUTH
+    KEY                   = str(get_env_or_config_option(conf, "YT_API_KEY"               , "yt_api_key"               , default_value=None))
+    HTTP_PROXY            =     get_env_or_config_option(conf, "YT_HTTP_PROXY"            , "yt_http_proxy"            , default_value=None)
+    HTTPS_PROXY           =     get_env_or_config_option(conf, "YT_HTTPS_PROXY"           , "yt_https_proxy"           , default_value=None)
+    CLEANUP_PERIOD        = int(get_env_or_config_option(conf, "YT_CLEANUP_PERIOD"        , "yt_cleanup_period"        , default_value=600000)) # 10 minutes
+    CONVERT_VIDEO_PERIOD  = int(get_env_or_config_option(conf, "YT_CONVERT_VIDEO_PERIOD"  , "yt_convert_video_period"  , default_value=1000)) # 1 second
+    AUDIO_EXPIRATION_TIME = int(get_env_or_config_option(conf, "YT_AUDIO_EXPIRATION_TIME" , "yt_audio_expiration_time" , default_value=259200000)) # 3 days
+    AUTOLOAD_NEWEST_AUDIO =     get_env_or_config_option(conf, "YT_AUTOLOAD_NEWEST_AUDIO" , "yt_autoload_newest_audio" , default_value=True)
+
     AUTOLOAD_NEWEST_AUDIO = utils.convert_to_bool(AUTOLOAD_NEWEST_AUDIO)
-    
+
+    if any(proxy is not None for proxy in [HTTP_PROXY, HTTPS_PROXY]):
+        PROXIES = {}
+    if HTTP_PROXY is not None:
+        PROXIES["http"] = HTTP_PROXY
+    if HTTPS_PROXY is not None:
+        PROXIES["https"] = HTTPS_PROXY
+
     ioloop.PeriodicCallback(
         callback=cleanup,
         callback_time=CLEANUP_PERIOD
@@ -156,6 +169,7 @@ def convert_videos():
             del conversion_queue[video]
 
 async def download_youtube_audio(video) -> bool:
+    global PROXIES
     yturl = get_youtube_url(video)
     logging.debug("Full URL: %s", yturl)
 
@@ -166,7 +180,12 @@ async def download_youtube_audio(video) -> bool:
     try:
         logging.debug('Start downloading audio stream: %s', video)
 
-        yt = YouTube(yturl, use_oauth=True, allow_oauth_cache=True)
+        yt = YouTube(
+            yturl,
+            use_oauth=True,
+            allow_oauth_cache=True,
+            proxies=PROXIES
+        )
         if logging.root.isEnabledFor(logging.DEBUG):
             yt.register_on_progress_callback(
                 lambda stream, chunk, bytes_remaining:
@@ -237,6 +256,7 @@ async def download_youtube_audio(video) -> bool:
     return True
 
 def download_youtube_video(video) -> str:
+    global PROXIES
     yturl = get_youtube_url(video)
     logging.debug("Full URL: %s", yturl)
 
@@ -245,8 +265,12 @@ def download_youtube_video(video) -> str:
 
     try:
         logging.debug('Start downloading video stream: %s', video)
-        
-        yt = YouTube(yturl, use_oauth=True, allow_oauth_cache=True)
+        yt = YouTube(
+            yturl,
+            use_oauth=True,
+            allow_oauth_cache=True,
+            proxies=PROXIES
+        )
         if logging.root.isEnabledFor(logging.DEBUG):
             yt.register_on_progress_callback(
                 lambda stream, chunk, bytes_remaining:
