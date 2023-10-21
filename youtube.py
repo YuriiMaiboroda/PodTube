@@ -16,6 +16,7 @@ AUTOLOAD_NEWEST_AUDIO = None
 HTTP_PROXY = None
 HTTPS_PROXY = None
 PROXIES = None
+USE_OAUTH = False
 
 video_links = {}
 playlist_feed = {}
@@ -39,8 +40,10 @@ def init(conf: ConfigParser):
     CONVERT_VIDEO_PERIOD  = int(get_env_or_config_option(conf, "YT_CONVERT_VIDEO_PERIOD"  , "yt_convert_video_period"  , default_value=1000)) # 1 second
     AUDIO_EXPIRATION_TIME = int(get_env_or_config_option(conf, "YT_AUDIO_EXPIRATION_TIME" , "yt_audio_expiration_time" , default_value=259200000)) # 3 days
     AUTOLOAD_NEWEST_AUDIO =     get_env_or_config_option(conf, "YT_AUTOLOAD_NEWEST_AUDIO" , "yt_autoload_newest_audio" , default_value=True)
+    USE_OAUTH             =     get_env_or_config_option(conf, "YT_USE_OAUTH"             , "yt_use_oauth"             , default_value=False)
 
     AUTOLOAD_NEWEST_AUDIO = utils.convert_to_bool(AUTOLOAD_NEWEST_AUDIO)
+    USE_OAUTH = utils.convert_to_bool(USE_OAUTH)
 
     if any(proxy is not None for proxy in [HTTP_PROXY, HTTPS_PROXY]):
         PROXIES = {}
@@ -169,7 +172,7 @@ def convert_videos():
             del conversion_queue[video]
 
 async def download_youtube_audio(video) -> bool:
-    global PROXIES
+    global PROXIES, USE_OAUTH
     yturl = get_youtube_url(video)
     logging.debug("Full URL: %s", yturl)
 
@@ -182,8 +185,8 @@ async def download_youtube_audio(video) -> bool:
 
         yt = YouTube(
             yturl,
-            use_oauth=True,
-            allow_oauth_cache=True,
+            use_oauth=USE_OAUTH,
+            allow_oauth_cache=USE_OAUTH,
             proxies=PROXIES
         )
         if logging.root.isEnabledFor(logging.DEBUG):
@@ -256,7 +259,7 @@ async def download_youtube_audio(video) -> bool:
     return True
 
 def download_youtube_video(video) -> str:
-    global PROXIES
+    global PROXIES, USE_OAUTH
     yturl = get_youtube_url(video)
     logging.debug("Full URL: %s", yturl)
 
@@ -267,8 +270,8 @@ def download_youtube_video(video) -> str:
         logging.debug('Start downloading video stream: %s', video)
         yt = YouTube(
             yturl,
-            use_oauth=True,
-            allow_oauth_cache=True,
+            use_oauth=USE_OAUTH,
+            allow_oauth_cache=USE_OAUTH,
             proxies=PROXIES
         )
         if logging.root.isEnabledFor(logging.DEBUG):
