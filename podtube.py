@@ -90,19 +90,18 @@ def make_app(config: ConfigParser):
         (r'/README.md', web.RedirectHandler, {'url': '/'}),
         (r'/Dockerfile', web.RedirectHandler, {'url': '/'}),
         (r'/', FileHandler),
-        (r'/(.*)', web.StaticFileHandler, {'path': '.'})
     ]
-    
+
     job_logger = logging.getLogger()
-    log_handler = job_logger.handlers[0]
-    if log_handler and log_handler is FileHandler:
+    for log_handler in job_logger.handlers:
+        if not isinstance(log_handler, logging.FileHandler):
+            continue
         log_filename = os.path.basename(log_handler.baseFilename)
         log_folder = "." + os.path.sep + os.path.dirname(os.path.relpath(log_handler.baseFilename)) + os.path.sep
-        # logging.info(f'log baseFilename: {handler.baseFilename}')
-        # logging.info(f'log file name: {log_filename}')
-        # logging.info(f'log folder: {log_folder}')
         handlers.append((r'/log/(.*)', log_output.LogFileHandler, {'path': log_folder, 'default_filename': log_filename}))
+        break
 
+    handlers.append((r'/(.*)', web.StaticFileHandler, {'path': '.'}))
     webapp = web.Application(handlers, compress_response=True)
     return webapp
 
