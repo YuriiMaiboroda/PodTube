@@ -28,6 +28,9 @@ HTTPS_PROXY = None
 PROXIES = None
 USE_OAUTH = False
 
+AUDIO_DIR = "./audio"
+VIDEO_DIR = "./video"
+
 video_links = {}
 playlist_feed = {}
 channel_feed = {}
@@ -92,7 +95,7 @@ def init(conf: ConfigParser):
         callback_time=CONVERT_VIDEO_PERIOD
     ).start()
 
-def set_key( new_key=None ):
+def set_key(new_key: str = None):
     """
     Sets the value of the global variable `KEY` to the provided `new_key`.
     
@@ -107,11 +110,11 @@ def set_key( new_key=None ):
 def cleanup():
     """
     Clean up expired video links, playlist feeds, channel feeds, and channel name map.
-    Delete audio files older than a certain time or when the disk space is low.
+    Delete audio files older than a certain time.
     Logs the items cleaned from each category.
     """
     # Globals
-    global video_links, playlist_feed, channel_name_to_id, channel_feed, AUDIO_EXPIRATION_TIME
+    global video_links, playlist_feed, channel_name_to_id, channel_feed, AUDIO_EXPIRATION_TIME, AUDIO_DIR, VIDEO_DIR
     current_time = datetime.datetime.now()
     # Video Links
     video_links_length = len(video_links)
@@ -168,7 +171,7 @@ def cleanup():
         )
     # Space Check
     expired_time = time.time() - (AUDIO_EXPIRATION_TIME / 1000)
-    for f in sorted(glob.glob('./audio/*mp3') + glob.glob('./video/*mp4'), key=lambda a_file: os.path.getctime(a_file)):
+    for f in sorted(glob.glob(f'{AUDIO_DIR}/*mp3') + glob.glob(f'{VIDEO_DIR}/*mp4'), key=lambda a_file: os.path.getctime(a_file)):
         ctime = os.path.getctime(f)
         if ctime <= expired_time:
             try:
@@ -221,16 +224,23 @@ def convert_videos():
         finally:
             del conversion_queue[video]
 
-async def download_youtube_audio(video) -> bool:
-    global PROXIES, USE_OAUTH
+async def download_youtube_audio(video: str):
+    """
+    Asynchronous download audio form the youtube video.
+
+    Args:
+        video (str): Youtube video's key.
+    """
+    global PROXIES, USE_OAUTH, AUDIO_DIR
     yturl = get_youtube_url(video)
     logging.debug("Full URL: %s", yturl)
 
-    audio_file = './audio/%s.mp3' % video
+    audio_file = f'{AUDIO_DIR}/{video}.mp3'
     audio_file_temp = audio_file + '.temp'
     video_file = None
 
     try:
+        Path(AUDIO_DIR).mkdir(parents=True, exist_ok=True)
         logging.debug('Start downloading audio stream: %s', video)
 
         yt = YouTube(
@@ -306,17 +316,25 @@ async def download_youtube_audio(video) -> bool:
         except Exception as e:
             logging.error('Error remove temp file: %s', e)
 
-    return True
-
 def download_youtube_video(video) -> str:
-    global PROXIES, USE_OAUTH
+    """
+    Download video from YouTube.
+
+    Args:
+        video (str): Youtube video's key.
+    
+    Return (str):
+        Path to downloaded video file.
+    """
+    global PROXIES, USE_OAUTH, VIDEO_DIR
     yturl = get_youtube_url(video)
     logging.debug("Full URL: %s", yturl)
 
-    video_file = './video/%s.mp4' % video
+    video_file = f'{VIDEO_DIR}/{video}.mp4'
     video_file_temp = video_file + '.temp'
 
     try:
+        Path(VIDEO_DIR).mkdir(parents=True, exist_ok=True)
         logging.debug('Start downloading video stream: %s', video)
         yt = YouTube(
             yturl,
@@ -591,11 +609,11 @@ class ChannelHandler(web.RequestHandler):
         self.write(feed['feed'])
         self.finish()
 
-        global AUTOLOAD_NEWEST_AUDIO
+        global AUTOLOAD_NEWEST_AUDIO, AUDIO_DIR
         if not AUTOLOAD_NEWEST_AUDIO:
             return
         video = video['video']
-        mp3_file = './audio/%s.mp3' % video
+        mp3_file = f'{AUDIO_DIR}/{video}.mp3'
         if channel[1] == 'audio' and not os.path.exists(mp3_file) and video not in conversion_queue.keys():
             conversion_queue[video] = {
                 'status': False,
@@ -779,11 +797,11 @@ class PlaylistHandler(web.RequestHandler):
         playlist_feed[playlist_name] = feed
         self.write(feed['feed'])
         self.finish()
-        global AUTOLOAD_NEWEST_AUDIO
+        global AUTOLOAD_NEWEST_AUDIO, AUDIO_DIR
         if not AUTOLOAD_NEWEST_AUDIO:
             return
         video = video['video']
-        mp3_file = './audio/%s.mp3' % video
+        mp3_file = f'{AUDIO_DIR}/{video}.mp3'
         if playlist[1] == 'audio' and not os.path.exists(mp3_file) and video not in conversion_queue.keys():
             conversion_queue[video] = {
                 'status': False,
@@ -837,12 +855,13 @@ class AudioHandler(web.RequestHandler):
         """
         A coroutine function that handles the GET request for audio files. It checks if the requested audio is available and, if so, streams the audio content to the client. If the audio is not available or an error occurs during the conversion, appropriate status codes are set and returned.
         """
+        global AUDIO_DIR
         logging.info('Audio: %s (%s)', audio, self.request.remote_ip)
         if audio in video_links and 'unavailable' in video_links[audio] and video_links[audio]['unavailable'] == True:
             # logging.info('Audio: %s is not available (%s)', audio, self.request.remote_ip)
             self.set_status(422) # Unprocessable Content. E.g. the video is a live stream
             return
-        mp3_file = './audio/%s.mp3' % audio
+        mp3_file = f'{AUDIO_DIR}/{audio}.mp3'
         if not os.path.exists(mp3_file):
             if audio not in conversion_queue.keys():
                 conversion_queue[audio] = {
@@ -1081,7 +1100,7 @@ class ClearCacheHandler(web.RequestHandler):
         """
         A function to handle clearing the cache for various video and playlist items.
         """
-        global video_links, playlist_feed, channel_feed, channel_name_to_id
+        global video_links, playlist_feed, channel_feed, channel_name_to_id, AUDIO_DIR, VIDEO_DIR
 
         videoFile = self.get_argument(ClearCacheHandler.VIDEO_FILES, ClearCacheHandler.NONE, True)
         audioFile = self.get_argument(ClearCacheHandler.AUDIO_FILES, ClearCacheHandler.NONE, True)
@@ -1097,14 +1116,14 @@ class ClearCacheHandler(web.RequestHandler):
             needClear = True
 
         if (videoFile == ClearCacheHandler.ALL):
-            for f in glob.glob('./video/*mp4'):
+            for f in glob.glob(f'{VIDEO_DIR}/*mp4'):
                 try:
                     os.remove(f)
                     logging.info('Deleted %s', f)
                 except Exception as e:
                     logging.error('Error remove file %s: %s', f, e)
         elif videoFile != ClearCacheHandler.NONE:
-            f = f"./video/{videoFile}"
+            f = f"{VIDEO_DIR}/{videoFile}"
             try:
                 os.remove(f)
                 logging.info('Deleted %s', f)
@@ -1112,14 +1131,14 @@ class ClearCacheHandler(web.RequestHandler):
                 logging.error('Error remove file %s: %s', f, e)
 
         if (audioFile == ClearCacheHandler.ALL):
-            for f in glob.glob('./audio/*mp3'):
+            for f in glob.glob(f'{AUDIO_DIR}/*mp3'):
                 try:
                     os.remove(f)
                     logging.info('Deleted %s', f)
                 except Exception as e:
                     logging.error('Error remove file %s: %s', f, e)
         elif audioFile != ClearCacheHandler.NONE:
-            f = f"./audio/{audioFile}"
+            f = f"{AUDIO_DIR}/{audioFile}"
             try:
                 os.remove(f)
                 logging.info('Deleted %s', f)
@@ -1220,7 +1239,7 @@ class ClearCacheHandler(web.RequestHandler):
         self.write(f"<select id='{ClearCacheHandler.VIDEO_FILES}' name='{ClearCacheHandler.VIDEO_FILES}'>")
         self.write(f"<option value='{ClearCacheHandler.NONE}' selected>{ClearCacheHandler.NONE}</option>")
         self.write(f"<option value='{ClearCacheHandler.ALL}'>{ClearCacheHandler.ALL}</option>")
-        for f in sorted(glob.glob('./video/*mp4'), key=lambda a_file: os.path.getctime(a_file)):
+        for f in sorted(glob.glob(f'{VIDEO_DIR}/*mp4'), key=lambda a_file: os.path.getctime(a_file)):
             size = os.path.getsize(f)
             if size > 10**12:
                 size = str(size // 2**40) + 'TiB'
@@ -1241,7 +1260,7 @@ class ClearCacheHandler(web.RequestHandler):
         self.write(f"<select id='{ClearCacheHandler.AUDIO_FILES}' name='{ClearCacheHandler.AUDIO_FILES}'>")
         self.write(f"<option value='{ClearCacheHandler.NONE}' selected>{ClearCacheHandler.NONE}</option>")
         self.write(f"<option value='{ClearCacheHandler.ALL}'>{ClearCacheHandler.ALL}</option>")
-        for f in sorted(glob.glob('./audio/*mp3'), key=lambda a_file: os.path.getctime(a_file)):
+        for f in sorted(glob.glob(f'{AUDIO_DIR}/*mp3'), key=lambda a_file: os.path.getctime(a_file)):
             size = os.path.getsize(f)
             if size > 10**12:
                 size = str(size // 2**40) + 'TiB'
