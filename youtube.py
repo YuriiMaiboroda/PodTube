@@ -665,6 +665,14 @@ class PlaylistHandler(web.RequestHandler):
             self.write(playlist_feed[playlist_name]['feed'])
             self.finish()
             return
+
+        try:
+            max_count = self.get_argument("max_count", "-1")
+            max_count = int(max_count)
+        except ValueError:
+            logging.error(f"Failed parse max_count to int: {max_count}")
+            max_count = 1
+
         calls = 0
         payload = {
             'part': 'snippet',
@@ -791,10 +799,11 @@ class PlaylistHandler(web.RequestHandler):
         fg.updated(str(datetime.datetime.utcnow()) + 'Z')
         video = None
         response = {'nextPageToken': ''}
-        while 'nextPageToken' in response.keys():
+        items_count = 0
+        while 'nextPageToken' in response.keys() and (max_count < 1 or items_count < max_count):
             payload = {
                 'part': 'snippet',
-                'maxResults': 50,
+                'maxResults': 50 if max_count < 1 or max_count - items_count > 50 else max_count - items_count,
                 'playlistId': playlist[0],
                 'key': KEY,
                 'pageToken': response['nextPageToken']
@@ -857,6 +866,7 @@ class PlaylistHandler(web.RequestHandler):
                 fe.description(snippet['description'])
                 if not video or video['expire'] < fe.pubDate():
                     video = {'video': fe.id(), 'expire': fe.pubDate()}
+                items_count = items_count + 1
         feed = {
             'feed': fg.rss_str(),
             'expire': datetime.datetime.now() + datetime.timedelta(hours=calls),

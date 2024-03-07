@@ -53,9 +53,10 @@ http://yourserver.com/youtube/user/@username/audio
 ##### Optional GET Arguments
 
 `as_channel` — set information (title, icon and description) of channel instead of playlist
+`max_count=value` — clamp playlist length
 
 ```
-http://yourserver.com/youtube/playlist/<PlaylistID>/audio?as_channel
+http://yourserver.com/youtube/playlist/<PlaylistID>/audio?max_count=50&as_channel
 ```
 
 ### Bitchute
