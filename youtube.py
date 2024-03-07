@@ -213,14 +213,17 @@ def convert_videos():
             yield download_youtube_audio(video)
             logging.info('Successfully downloaded: %s', video)
         except Exception as ex:
-            logging.exception('Error converting file: %s', ex)
             if isinstance(ex, (exceptions.LiveStreamError, exceptions.VideoUnavailable)):
+                errorType = "Video is Live Stream" if isinstance(ex, exceptions.LiveStreamError) else "Video is Unavailable"
+                logging.error('Error converting file: %s', errorType)
                 if video not in video_links:
                     video_links[video] = {
                         'url': None,
                         'expire': datetime.datetime.now() + datetime.timedelta(hours=6)
                     }
                 video_links[video]['unavailable'] = True
+            else:
+                logging.exception('Error converting file: %s', ex)
         finally:
             del conversion_queue[video]
 
