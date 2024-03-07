@@ -254,7 +254,7 @@ async def download_youtube_audio(video: str):
                 lambda stream, chunk, bytes_remaining:
                     logging.debug('Downloading audio %s: downloaded %s, remain %s', video, len(chunk), bytes_remaining)
             )
-        yt.streams.get_audio_only().download(filename=audio_file_temp)
+        yt.streams.get_audio_only().download(filename=audio_file_temp, max_retries=5)
 
         try:
             os.rename(audio_file_temp, audio_file)
@@ -351,7 +351,7 @@ def download_youtube_video(video) -> str:
         stream = yt.streams.get_by_resolution("720p", progressive=False)
         if not stream:
             stream = yt.streams.get_highest_resolution(progressive=False)
-        stream.download(filename=video_file_temp)
+        stream.download(filename=video_file_temp, max_retries=5)
 
         os.rename(video_file_temp, video_file)
         logging.debug('Successfully downloaded video: %s', video)
@@ -420,7 +420,7 @@ class ChannelHandler(web.RequestHandler):
         Return types:
             - None
         """
-        global KEY
+        global KEY, PROXIES
         maxPages = self.get_argument('max', None)
         if maxPages:
             logging.info("Will grab videos from a maximum of %s pages" % maxPages)
@@ -446,8 +446,9 @@ class ChannelHandler(web.RequestHandler):
             'key': KEY
         }
         request = requests.get(
-             'https://www.googleapis.com/youtube/v3/channels',
-             params=payload
+            'https://www.googleapis.com/youtube/v3/channels',
+            params=payload,
+            proxies=PROXIES
         )
         calls += 1
         if request.status_code != 200:
@@ -461,7 +462,8 @@ class ChannelHandler(web.RequestHandler):
             }
             request = requests.get(
                 'https://www.googleapis.com/youtube/v3/channels',
-                params=payload
+                params=payload,
+                proxies=PROXIES
             )
             calls += 1
         if request.status_code == 200:
@@ -539,7 +541,8 @@ class ChannelHandler(web.RequestHandler):
             }
             request = requests.get(
                 'https://www.googleapis.com/youtube/v3/playlistItems',
-                params=payload
+                params=payload,
+                proxies=PROXIES
             )
             calls += 1
             response = request.json()
@@ -652,7 +655,7 @@ class PlaylistHandler(web.RequestHandler):
         """
         A coroutine function to fetch a playlist and generate an RSS feed based on the playlist content.
         """
-        global KEY
+        global KEY, PROXIES
         playlist = playlist.split('/')
         if len(playlist) < 2:
             playlist.append('video')
@@ -670,7 +673,8 @@ class PlaylistHandler(web.RequestHandler):
         }
         request = requests.get(
             'https://www.googleapis.com/youtube/v3/playlists',
-            params=payload
+            params=payload,
+            proxies=PROXIES
         )
         calls += 1
         if request.status_code == 200:
@@ -734,7 +738,8 @@ class PlaylistHandler(web.RequestHandler):
             }
             request = requests.get(
                 'https://www.googleapis.com/youtube/v3/playlistItems',
-                params=payload
+                params=payload,
+                proxies=PROXIES
             )
             calls += 1
             response = request.json()
@@ -1006,8 +1011,9 @@ class UserHandler(web.RequestHandler):
         Returns:
             str: The canonical URL if found, otherwise None.
         """
+        global PROXIES
         logging.info("Getting canonical for %s" % url)
-        req = requests.get( url )
+        req = requests.get( url, proxies=PROXIES )
         if req.status_code == 200:
             from bs4 import BeautifulSoup
             bs = BeautifulSoup( req.text, 'lxml' )
