@@ -4,3 +4,4 @@ SCRIPTPATH=$(dirname "$(realpath "$0")")
 
 mkdir -p $DIRDL
 python $DIR/podtube.py --log-file $LOG_FILE_PATH --config-file $CONFIG_FILE
+# python $DIR/podtube.py --config-file $CONFIG_FILE

@@ -82,3 +82,11 @@ def error_or_print(msg: str, *args, **kwargs):
         logging.error(msg, *args, **kwargs)
     else:
         print(msg % args, file=sys.stderr, flush=True)
+
+def set_default_attr(obj, name, default_value, replace_none=True):
+    try:
+        if getattr(obj, name) is None and replace_none:
+            setattr(obj, name, default_value)
+    except AttributeError:
+        setattr(obj, name, default_value)
+    return getattr(obj, name)

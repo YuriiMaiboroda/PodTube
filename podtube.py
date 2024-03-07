@@ -167,11 +167,12 @@ if __name__ == '__main__':
         if not read_ok:
             print("Error reading configuration file: " + args.config_file, file=sys.stderr, flush=True)
             conf = None
-    args.port         = args.port         if args.port         is not None else get_env_or_config_option(conf, "GENERAL_PORT"        , "port"        , defaults["port"])
-    args.log_file     = args.log_file     if args.log_file     is not None else get_env_or_config_option(conf, "GENERAL_LOG_FILE"    , "log_file"    , defaults["log_file"])
-    args.log_format   = args.log_format   if args.log_format   is not None else get_env_or_config_option(conf, "GENERAL_LOG_FORMAT"  , "log_format"  , defaults["log_format"])
-    args.log_level    = args.log_level    if args.log_level    is not None else get_env_or_config_option(conf, "GENERAL_LOG_LEVEL"   , "log_level"   , defaults["log_level"])
-    args.log_filemode = args.log_filemode if args.log_filemode is not None else get_env_or_config_option(conf, "GENERAL_LOG_FILEMODE", "log_filemode", defaults["log_filemode"])
+    utils.set_default_attr(args, "port",         get_env_or_config_option(conf, "GENERAL_PORT"        , "port"        , defaults["port"]))
+    utils.set_default_attr(args, "log_file",     get_env_or_config_option(conf, "GENERAL_LOG_FILE"    , "log_file"    , defaults["log_file"]))
+    utils.set_default_attr(args, "log_format",   get_env_or_config_option(conf, "GENERAL_LOG_FORMAT"  , "log_format"  , defaults["log_format"]))
+    utils.set_default_attr(args, "log_level",    get_env_or_config_option(conf, "GENERAL_LOG_LEVEL"   , "log_level"   , defaults["log_level"]))
+    utils.set_default_attr(args, "log_filemode", get_env_or_config_option(conf, "GENERAL_LOG_FILEMODE", "log_filemode", defaults["log_filemode"]))
+    
     logging.basicConfig(
         level=logging.getLevelName(args.log_level),
         format=args.log_format,
