@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import logging, requests
 import datetime, pytz
+import dateutil
 
 from feedgen.feed import FeedGenerator
 from bs4 import BeautifulSoup
@@ -17,16 +18,16 @@ class ChannelHandler(web.RequestHandler):
     def get(self, channel):
         logging.debug( "Got channel: %s" % channel )
 
-        url = "https://rumble.com/c/%s" % channel
+        url = "https://rumble.com/c/%s/videos" % channel
         logging.info( "Handling Rumble URL: %s" % url )
-        
+
         self.set_header('Content-type', 'application/rss+xml')
         feed = self.generate_rss( channel )
         self.write( feed )
         self.finish()
 
     def get_html( self, channel ):
-        url = "https://rumble.com/c/%s" % channel
+        url = "https://rumble.com/c/%s/videos" % channel
         logging.info("Rumble URL: %s" % url)
         r = requests.get( url, headers=headers )
         bs = BeautifulSoup( r.text, "lxml" )
@@ -41,18 +42,25 @@ class ChannelHandler(web.RequestHandler):
         feed.load_extension('podcast')
 
         ## Get Channel Info
-        try:
-            feed.title( bs.find("div", "channel-header--title").find("h1").text )
-        except:
+
+        channel_title = bs.find("div", "channel-header--title")
+        if channel_title:
+            channel_title = channel_title.find("h1").text
+            if channel_title:
+                feed.title( channel_title )
+            else:
+                logging.error("Failed to pull channel title. Using provided channel instead")
+                feed.title( channel )
+        else:
             logging.error("Failed to pull channel title. Using provided channel instead")
             feed.title( channel )
 
-        try:
-            thumb = bs.find("img", "channel-header--thumb")['src']
-            if thumb is not None:
-                feed.image( thumb )
-        except:
+        thumb = bs.find("img", "channel-header--img")
+        if thumb:
+            feed.image( thumb['src'] )
+        else:
             logging.error("Channel thumbnail not found")
+
         feed.description( "--" )
         feed.id( channel )
         feed.link(
@@ -61,92 +69,120 @@ class ChannelHandler(web.RequestHandler):
         )
         feed.language('en')
 
-        ## Make item list from video list
-        videos = bs.find("div", "main-and-sidebar").find("ol").find_all("li")
-        for video in videos:
-            if video.find("span", "video-item--upcoming") is not None:
-                logging.info("Found upcoming video, skipping")
-                continue
-            if video.find("span", "video-item--live") is not None:
-                logging.info("Found live video, skipping")
-                continue
+        ## Assemble RSS items list
+        videos = bs.find("ol", "thumbnail__grid")
+        if videos:
+            videos = videos.find_all("div", "videostream")
+        else:
+            logging.info("Failed to find video list")
 
-            try:
-                vidduration = video.find('span', 'video-item--duration')['data-value']
-            except TypeError:
-                logging.warning("Failed to get duration; likely a live video, skipping")
-                continue
+        if videos:
+            for video in videos:
+                ## Check for and skip live videos and upcomming videos.
+                ## Disabled to test if this is needed.
+                if video.find("span", "video-item--live") or video.find("span", "video-item--upcoming"):
+                    logging.info("Found live/upcoming video, skipping")
+                    continue
 
-            item = feed.add_entry()
-            item.title( video.find("h3", "video-item--title").text )
-            item.description( "--" )
-            lnk = video.find("a", "video-item--a")
-            vid = lnk['href']
-            link = f'http://{self.request.host}/rumble/video' + vid
-            item.link(
-                href = link,
-                title = item.title()
-            )
+                ## Gather channel information
+                item = feed.add_entry()
 
-            dateformat = "%Y-%m-%d %H:%M:%S"
-            viddatetime = video.find("time", "video-item--meta")['datetime']
-            viddate = viddatetime.split('T')[0]
-            vidtime = viddatetime.split('T')[1]
-            vidtime = vidtime.split('-')[0]
-            vidpubdate = viddate + " " + vidtime
+                ## Gather video information
+                vidtitle = video.find("h3", "thumbnail__title")
+                if vidtitle:
+                    item.title( vidtitle.text.strip() )
+                else:
+                    logging.info("Failed to pull video thumbnail.")
 
-            item.podcast.itunes_duration( vidduration )
+                viddesc = video.find("div", "videostream__description")
+                if viddesc:
+                    item.description( viddesc.text.strip() )
+                else:
+                    logging.info("Failed to pull video description.")
 
-            date = datetime.datetime.strptime( vidpubdate, dateformat ).astimezone( pytz.utc )
-            item.pubDate( date )
-            item.enclosure(
-                url = link,
-                type = "video/mp4"
-            )
+                vid = video.find("a", "videostream__link")
+                if vid:
+                    vid = vid['href']
+                else:
+                    logging.info("Failed to pull URL to video.")
+
+                link = f'http://{self.request.host}/rumble/video' + vid
+                item.link(
+                    href = link,
+                    title = item.title()
+                )
+
+                vidduration = video.find('div', 'videostream__status--duration')
+                if vidduration:
+                    item.podcast.itunes_duration( vidduration.text.strip() )
+                else:
+                    logging.info("Failed to pull video duration.")
+
+                viddatetime = video.find("time", "videostream__time")
+                if viddatetime:
+                    date = dateutil.parser.parse( viddatetime['datetime'] )
+                    item.pubDate( date )
+                else:
+                    logging.info("Failed to pull video date.")
+
+                item.enclosure(
+                    url = link,
+                    type = "video/mp4"
+                )
         return feed.rss_str( pretty=True )
 
 class UserHandler(web.RequestHandler):
     def head(self, user):
         self.set_header('Content-type', 'application/rss+xml')
         self.set_header('Accept-Ranges', 'bytes')
-    
+
     def get(self, user):
         logging.debug( "Got user: %s" % user )
 
-        url = "https://rumble.com/user/%s" % user
+        url = "https://rumble.com/user/%s/videos" % user
         logging.info( "Handling Rumble URL: %s" % url )
 
         self.set_header('Content-type', 'application/rss+xml')
         feed = self.generate_rss( user )
         self.write( feed )
         self.finish()
-    
+
     def get_html( self, user ):
-        url = "https://rumble.com/user/%s" % user
+        url = "https://rumble.com/user/%s/videos" % user
         logging.info("Rumble URL: %s" % url)
         r = requests.get( url, headers=headers )
+        if r.status_code == 404:
+            logging.error( "Rumble returned 404: Not found" )
+            return None
         bs = BeautifulSoup( r.text, 'lxml' )
         html = str( bs.find("main") )
         return html
-    
+
     def generate_rss( self, user ):
         logging.debug("User: %s" % user)
-        bs = BeautifulSoup( self.get_html( user ), 'lxml' )
+        html = self.get_html( user )
+        if html is None:
+            logging.error("Rumble returned 404: Not found")
+            self.set_status( 404 )
+            return None
+        bs = BeautifulSoup( html, 'lxml' )
 
         feed = FeedGenerator()
         feed.load_extension('podcast')
 
         ## Get User/Channel Info
-        try:
-            feed.title( bs.find("div", "listing-header--title").find("h1").text )
-        except:
-            logging.info("Failed to pull user title.")
-            feed.title( channel )
+        chantitle = bs.find("div", "channel-header--title")
+        if chantitle:
+            feed.title( chantitle.find("h1").text )
+        else:
+            logging.info("Failed to pull user channel title.")
+            feed.title( user )
 
-        try:
-            feed.image( bs.find("img", "listing-header--thumb")['src'] )
-        except:
-            logging.info("Failed to pull user thumbnail.")
+        chanheader = bs.find("img", "channel-header--img")
+        if chanheader:
+            feed.image( chanheader['src'] )
+        else:
+            logging.info("Failed to pull user channel thumbnail.")
 
         feed.description( "--" )
         feed.id( user )
@@ -157,36 +193,76 @@ class UserHandler(web.RequestHandler):
         feed.language('en')
 
         ## Assemble RSS items list
-        videos = bs.find("div", "main-and-sidebar").find("ol").find_all("li")
-        for video in videos:
-            item = feed.add_entry()
-            item.title( video.find("h3", "video-item--title").text )
-            item.description( video.find("a", {'rel': "author"}).text )
+        videos = bs.find("ol", "thumbnail__grid")
+        if videos:
+            videos = videos.find_all("div", "videostream")
+        else:
+            logging.info("Failed to find video list")
 
-            lnk = video.find("a", "video-item--a")
-            vid = lnk['href']
-            link = f'http://{self.request.host}/rumble/video' + vid
-            icon = video.find("img", "video-item--img")['src']
-            item.podcast.itunes_image( icon )
-            item.link(
-                href = link,
-                title = item.title()
-            )
+        if videos:
+            for video in videos:
+                ## Filter out live and upcoming videos
+                if video.find("span", "video-item--upcoming"):
+                    logging.info("Found upcoming video, skipping")
+                    continue
+                if video.find("span", "video-item--live"):
+                    logging.info("Found live video, skipping")
+                    continue
 
-            dateformat = "%Y-%m-%d %H:%M:%S"
-            viddatetime = video.find("time", "video-item--meta")['datetime']
-            viddate = viddatetime.split('T')[0]
-            vidtime = viddatetime.split('T')[1]
-            vidtime = vidtime.split('-')[0]
-            vidpubdate = viddate + " " + vidtime
-            item.podcast.itunes_duration( video.find('span', 'video-item--duration')['data-value'] )
+                item = feed.add_entry()
 
-            date = datetime.datetime.strptime( vidpubdate, dateformat ).astimezone( pytz.utc )
-            item.pubDate( date )
-            item.enclosure(
-                url = link,
-                type = "video/mp4"
-            )
+                ## Gather channel information
+                vidtitle = video.find("h3", "thumbnail__title")
+                if vidtitle:
+                    item.title( vidtitle.text )
+                else:
+                    logging.info("Failed to get video title")
+                    item.title( 'N/A' )
+
+                viddescription = video.find("div", "videostream__description")
+                if viddescription:
+                    item.description( viddescription.text )
+                else:
+                    logging.info("Failed to get video description")
+                    item.description( 'N/A' )
+
+                lnk = video.find("a", "videostream__link")
+                if lnk:
+                    vid = lnk['href']
+                    link = f'http://{self.request.host}/rumble/video' + vid
+                    icon = video.find("img", "thumbnail__image")['src']
+                    item.podcast.itunes_image( icon )
+                    item.link(
+                        href = link,
+                        title = item.title()
+                    )
+                else:
+                    item.link(
+                        href = "N/A",
+                        title = item.title()
+                    )
+
+                vidduration = video.find('div', 'videostream__status--duration')
+                if vidduration:
+                    item.podcast.itunes_duration( vidduration.text.strip() )
+                else:
+                    logging.info("Failed to get video duration")
+                    item.podcast.itunes_duration( 'N/A' )
+
+                viddatetime = video.find("time", "videostream__time")
+                if viddatetime:
+                    viddatetime = viddatetime['datetime']
+                    date = dateutil.parser.parse( viddatetime )
+                    item.pubDate( date )
+                else:
+                    logging.info("Failed to get video date")
+                    item.pubDate( datetime.datetime.now() )
+                item.enclosure(
+                    url = link,
+                    type = "video/mp4"
+                )
+            else:
+                logging.error("Failed to find video list")
         return feed.rss_str( pretty=True )
 
 class CategoryHandler(web.RequestHandler):
@@ -208,6 +284,7 @@ class CategoryHandler(web.RequestHandler):
     def get_html(self, category):
         url = "https://rumble.com/category/%s/recorded" % category
         logging.info("Rumble URL: %s" % url)
+
         r = requests.get( url, headers=headers )
         bs = BeautifulSoup( r.text, 'lxml' )
         html = str( bs.find("main") )
@@ -220,13 +297,16 @@ class CategoryHandler(web.RequestHandler):
         feed = FeedGenerator()
         feed.load_extension('podcast')
 
-        try:
-            feed.title( "Rumble: %s" % bs.find("h1", "header__heading").text.strip() )
-        except:
-            logging.error( "Failed to pull category name" )
+        ## Get Channel Info
+        feedtitle = bs.find("h1", "header__heading")
+        if feedtitle:
+            feed.title( "Rumble: %s" % feedtitle.text.strip() )
+        else:
+            logging.info( "Failed to pull category name" )
             feed.title( category )
-        
+
         feed.description( "New videos from Rumble's %s category page" % category )
+
         feed.id( category )
         feed.link(
             href = f'https://rumble.com/category/%s' % category,
@@ -235,42 +315,79 @@ class CategoryHandler(web.RequestHandler):
         feed.language('en')
 
         ## Assemble RSS items list
-        videos = bs.find("ol", "recordedstreams").find_all("li")
-        for video in videos:
-            ## Check for and skip live videos and upcomming videos
-            if video.find("span", "video-item--live") or video.find("span", "video-item--upcoming"):  ##['data-value'] == "LIVE":
-                continue
+        videos = bs.find("ol", "thumbnail__grid")
+        if videos:
+            videos = videos.find_all("div", "videostream")
+        else:
+            logging.error("Failed to find video list")
+            return
 
-            item = feed.add_entry()
-            item.title( video.find("h3", "videostream__title").text.strip() )
-            item.description( video.find("span", "channel__name").text.strip() )
+        videos = bs.find("ol", "thumbnail__grid")
+        if videos:
+            videos = videos.find_all("div", "videostream")
+        else:
+            logging.error("Failed to find video list")
+            return
 
-            lnk = video.find("a", "videostream__link")
-            vid = lnk['href']
-            link = f'http://{self.request.host}/rumble/video' + vid
-            icon = video.find( "img", "videostream__image" )['src']
-            item.podcast.itunes_image( icon )
-            item.link(
-                href = link,
-                title = item.title()
-            )
+        if videos:
+            for video in videos:
+                item = feed.add_entry()
 
-            ## No longer given, leaving this code here in case in comes back in the future
-            # dateformat = "%Y-%m-%d %H:%M:%S"
-            # viddatetime = video.find("time", "video-item--meta")['datetime']
-            # viddate = viddatetime.split('T')[0]
-            # vidtime = viddatetime.split('T')[1]
-            # vidtime = vidtime.split('-')[0]
-            # vidpubdate = viddate + " " + vidtime
-            # date = datetime.datetime.strptime( vidpubdate, dateformat ).astimezone( pytz.utc )
-            # item.pubDate( date )
+                vidtitle = video.find("h3", "thumbnail__title")
+                if vidtitle:
+                    item.title( vidtitle.text.strip() )
+                else:
+                    logging.info("Failed to get video title")
+                    item.title( 'N/A' )
 
-            # item.podcast.itunes_duration( video.find('span', 'video-item--duration')['data-value'] )
+                viddescription = video.find("span", "channel__name")
+                if viddescription:
+                    item.description( viddescription.text.strip() )
+                else:
+                    logging.info("Failed to get video description/user name")
+                    item.description( 'N/A' )
 
-            item.enclosure(
-                url = link,
-                type = "video/mp4"
-            )
+
+                lnk = video.find("a", "videostream__link")
+                if lnk:
+                    vid = lnk['href']
+                else:
+                    logging.info("Failed to get video link")
+                    vid = None
+
+                link = f'http://{self.request.host}/rumble/video' + vid
+
+                icon = video.find( "img", "thumbnail__image" )
+                if icon:
+                    item.podcast.itunes_image( icon['src'] )
+                else:
+                    logging.info("Failed to get video icon")
+                    item.podcast.itunes_image( None )
+
+                item.link(
+                    href = link,
+                    title = item.title()
+                )
+
+                item.enclosure(
+                    url = link,
+                    type = "video/mp4"
+                )
+
+                viddatetime = video.find("time", "videostream__time")
+                if viddatetime:
+                    item.pubDate = viddatetime['datetime']
+                else:
+                    logging.info("Failed to get video date")
+                    item.pubDate = None
+
+                vidduration = video.find("div", "videostream__status--duration")
+                if vidduration:
+                    item.podcast.itunes_duration( vidduration.text.strip() )
+                else:
+                    logging.info("Failed to get video duration")
+                    item.podcast.itunes_duration( None )
+
         return feed.rss_str( pretty=True )
 
 def get_rumble_url( video, bitrate=None ):
@@ -364,7 +481,7 @@ def get_rumble_url( video, bitrate=None ):
                         break
                 else:
                     logging.info("%s not found in video JSON" % res)
-                
+
             if vidurl is None:
                 for vid in vidInfo[0]:
                     if vidInfo[0][vid]['url'] is not None:

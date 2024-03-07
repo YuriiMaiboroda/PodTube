@@ -7,3 +7,4 @@ tornado
 pytz
 pysocks
 pytube @ git+https://github.com/YuriiMaiboroda/pytube@fixes
+cloudscraper
