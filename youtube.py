@@ -693,31 +693,94 @@ class PlaylistHandler(web.RequestHandler):
         )
         playlist_data = response['items'][0]['snippet']
         snippet = playlist_data
+
+        icon_url = None
+        title = None
+        description = None
+
+        as_channel = self.get_argument("as_channel", None)
+        if as_channel is not None:
+            payload = {
+                'part': 'snippet',
+                'maxResults': 1,
+                'id': snippet['channelId'],
+                'key': KEY
+            }
+            request = requests.get(
+                'https://www.googleapis.com/youtube/v3/channels',
+                params=payload,
+                proxies=PROXIES
+            )
+            calls += 1
+            if request.status_code != 200:
+                payload = {
+                    'part': 'snippet',
+                    'maxResults': 1,
+                    'forUsername': snippet['channelId'],
+                    'key': KEY
+                }
+                request = requests.get(
+                    'https://www.googleapis.com/youtube/v3/channels',
+                    params=payload,
+                    proxies=PROXIES
+                )
+                calls += 1
+            if request.status_code == 200:
+                logging.debug('Downloaded Playlist\'s Channel Information')
+            else:
+                logging.error('Error Downloading Playlist\'s Channel: %s', request.reason)
+                self.send_error(reason='Error Downloading Playlist')
+                return
+
+            response = request.json()
+            channel_data = response['items'][0]['snippet']
+            icon_key = max(
+                channel_data['thumbnails'],
+                key=lambda x: channel_data['thumbnails'][x]['width']
+            )
+            icon_url = channel_data['thumbnails'][icon_key]['url']
+            if 'title' in channel_data:
+                title = channel_data['title']
+            if 'description' in channel_data:
+                description = channel_data['description']
+
         icon = max(
             snippet['thumbnails'],
             key=lambda x: snippet['thumbnails'][x]['width']
         )
+        playlist_title = f"{snippet['channelTitle']}: {snippet['title']}"
         logging.info(
             'Playlist: %s (%s)',
             playlist[0],
-            snippet['title']
+            playlist_title
         )
-        fg.title(snippet['title'])
+        if not title:
+            title = playlist_title
+        if not description:
+            description = snippet['description'] or ' '
+        if not icon_url:
+            icon = max(
+                snippet['thumbnails'],
+                key=lambda x: snippet['thumbnails'][x]['width']
+            )
+            icon_url = snippet['thumbnails'][icon]['url']
+
+        fg.title(title)
         fg.id(f'{self.request.protocol}://{self.request.host}{self.request.uri}')
-        fg.description(snippet['description'] or ' ')
+        fg.description(description)
         fg.author(
             name='Podtube',
             email='armware+podtube@gmail.com',
             uri='https://github.com/amckee/PodTube'
         )
         fg.podcast.itunes_author(snippet['channelTitle'])
-        fg.image(snippet['thumbnails'][icon]['url'])
+        fg.image(icon_url)
         fg.link(
-            href=f'https://www.youtube.com/playlist/?list={playlist}',
+            href=f'https://www.youtube.com/playlist/?list={playlist[0]}',
             rel='self'
         )
         fg.language('en-US')
-        fg.podcast.itunes_image(snippet['thumbnails'][icon]['url'])
+        fg.podcast.itunes_image(icon_url)
         fg.podcast.itunes_explicit('no')
         fg.podcast.itunes_owner(
             name='Podtube',
