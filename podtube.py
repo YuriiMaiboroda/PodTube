@@ -15,6 +15,7 @@ import youtube
 import bitchute
 import rumble
 import dailymotion
+import proxy
 
 # Handled automatically by git pre-commit hook
 __version__ = '2024.02.07.4'
@@ -65,6 +66,7 @@ def make_app(config: ConfigParser):
     - web.Application - the initialized web application.
     """
     youtube.init(config)
+    proxy.init(config)
     handlers = [
         (r'/youtube/channel/(.*)', youtube.ChannelHandler, {
             'video_handler_path': '/youtube/video/',
@@ -86,6 +88,8 @@ def make_app(config: ConfigParser):
         (r'/bitchute/video/(.*)', bitchute.VideoHandler),
         (r'/dailymotion/channel/(.*)', dailymotion.ChannelHandler),
         (r'/dailymotion/video/(.*)', dailymotion.VideoHandler),
+        (r'/proxy/rss/(.*)', proxy.ProxyRssHandler, {'proxy_handler_path': '/proxy/all/'}),
+        (r'/proxy/all/(.*)', proxy.ProxyHandler),
         (r'/config.ini', web.RedirectHandler, {'url': '/'}),
         (r'/README.md', web.RedirectHandler, {'url': '/'}),
         (r'/Dockerfile', web.RedirectHandler, {'url': '/'}),
