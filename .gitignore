@@ -2,6 +2,7 @@ bitchute_sample*
 geckodriver.log
 rumble_sample*
 .vscode
+*.code-workspace
 audio
 *notes
 podtube.log
