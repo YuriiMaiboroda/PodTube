@@ -27,8 +27,10 @@ http://yourserver.com/youtube/user/@username
 ##### Optional GET Arguments
 
 `max` — limit the number of pages we pull from to 10 pages
+`max_items=value` — clamp playlist length
 ```
 http://yourserver.com/youtube/channel/youtube-channel-id?max=10
+http://yourserver.com/youtube/channel/youtube-channel-id?max_items=50
 ```
 
 #### Playlists
@@ -53,10 +55,10 @@ http://yourserver.com/youtube/user/@username/audio
 ##### Optional GET Arguments
 
 `as_channel` — set information (title, icon and description) of channel instead of playlist
-`max_count=value` — clamp playlist length
+`max_items=value` — clamp playlist length
 
 ```
-http://yourserver.com/youtube/playlist/<PlaylistID>/audio?max_count=50&as_channel
+http://yourserver.com/youtube/playlist/<PlaylistID>/audio?max_items=50&as_channel
 ```
 
 ### Bitchute

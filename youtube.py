@@ -424,9 +424,17 @@ class ChannelHandler(web.RequestHandler):
             - None
         """
         global KEY, PROXIES
-        maxPages = self.get_argument('max', None)
-        if maxPages:
-            logging.info("Will grab videos from a maximum of %s pages" % maxPages)
+        max_pages = self.get_argument('max', None)
+        if max_pages:
+            logging.info("Will grab videos from a maximum of %s pages" % max_pages)
+
+        try:
+            max_items = self.get_argument("max_items", "-1")
+            max_items = int(max_items)
+            logging.info("Will grab maximum %s videos" % max_items)
+        except ValueError:
+            logging.error(f"Failed parse max_count to int: {max_items}")
+            max_items = 1
 
         channel = channel.split('/')
         if len(channel) < 2:
@@ -528,16 +536,16 @@ class ChannelHandler(web.RequestHandler):
         fg.updated(str(datetime.datetime.utcnow()) + 'Z')
 
         response = {'nextPageToken': ''}
-        pageCount = itemCount = 0
-        while 'nextPageToken' in response.keys():
-            pageCount += 1
-            if maxPages and pageCount > int(maxPages):
+        page_count = items_count = 0
+        while 'nextPageToken' in response.keys() and (max_items < 1 or items_count < max_items):
+            page_count += 1
+            if max_pages and page_count > int(max_pages):
                 logging.info("Reached maximum number of pages. Stopping here.")
                 break
             next_page = response['nextPageToken']
             payload = {
                 'part': 'snippet,contentDetails',
-                'maxResults': 50,
+                'maxResults': 50 if max_items < 1 or max_items - items_count > 50 else max_items - items_count,
                 'playlistId': channel_upload_list,
                 'key': KEY,
                 'pageToken': next_page
@@ -573,7 +581,7 @@ class ChannelHandler(web.RequestHandler):
                     snippet['title']
                 )
                 fe = fg.add_entry()
-                itemCount += 1
+                items_count += 1
                 fe.title(snippet['title'])
                 fe.id(current_video)
                 icon = max(
@@ -610,7 +618,7 @@ class ChannelHandler(web.RequestHandler):
         for chan in channel_name:
             channel_feed[chan] = feed
 
-        logging.info("Got %s videos from %s pages" % (itemCount, pageCount))
+        logging.info("Got %s videos from %s pages" % (items_count, page_count))
 
         self.write(feed['feed'])
         self.finish()
@@ -670,11 +678,11 @@ class PlaylistHandler(web.RequestHandler):
             return
 
         try:
-            max_count = self.get_argument("max_count", "-1")
-            max_count = int(max_count)
+            max_items = self.get_argument("max_items", "-1")
+            max_items = int(max_items)
         except ValueError:
-            logging.error(f"Failed parse max_count to int: {max_count}")
-            max_count = 1
+            logging.error(f"Failed parse max_count to int: {max_items}")
+            max_items = 1
 
         calls = 0
         payload = {
@@ -803,10 +811,10 @@ class PlaylistHandler(web.RequestHandler):
         video = None
         response = {'nextPageToken': ''}
         items_count = 0
-        while 'nextPageToken' in response.keys() and (max_count < 1 or items_count < max_count):
+        while 'nextPageToken' in response.keys() and (max_items < 1 or items_count < max_items):
             payload = {
                 'part': 'snippet',
-                'maxResults': 50 if max_count < 1 or max_count - items_count > 50 else max_count - items_count,
+                'maxResults': 50 if max_items < 1 or max_items - items_count > 50 else max_items - items_count,
                 'playlistId': playlist[0],
                 'key': KEY,
                 'pageToken': response['nextPageToken']
@@ -902,12 +910,8 @@ class VideoHandler(web.RequestHandler):
         """
         logging.info('Getting Video: %s', video)
         yt_url = get_youtube_url(video)
-        if type(yt_url) == str:
-            logging.debug("Got video URL: %s" % yt_url)
-            self.redirect( yt_url )
-        else:
-            self.write( "Error returned by Youtube: %s - %s" % (yt_url.code, yt_url.msg) )
-            self.write( "<br/>https://www.youtube.com/watch?v=%s" % video ) #this helps with debugging
+        logging.debug("Redirect to %s", yt_url)
+        self.redirect( yt_url )
 
 class AudioHandler(web.RequestHandler):
     def initialize(self):
