@@ -388,15 +388,17 @@ def get_youtube_url(video: str) -> str:
     return "https://www.youtube.com/watch?v=%s" % video
 
 class ChannelHandler(web.RequestHandler):
-    def initialize(self, video_handler_path: str, audio_handler_path: str):
+    def initialize(self, video_handler_path: str, audio_handler_path: str, default_item_type: str = "audio"):
         """
         Initializes the object with the given video and audio handler paths.
 
         :param video_handler_path: A string representing the path to the video handler.
         :param audio_handler_path: A string representing the path to the audio handler.
+        :param default_item_type: Default type of elements. 'audio' or 'video'
         """
         self.video_handler_path = video_handler_path
         self.audio_handler_path = audio_handler_path
+        self.default_item_type = default_item_type
 
     @gen.coroutine
     def head(self):
@@ -438,7 +440,7 @@ class ChannelHandler(web.RequestHandler):
 
         channel = channel.split('/')
         if len(channel) < 2:
-            channel.append('video')
+            channel.append(self.default_item_type)
         channel_name = ['/'.join(channel)]
         self.set_header('Content-type', 'application/rss+xml')
         if channel_name[0] in channel_feed and channel_feed[channel_name[0]]['expire'] > datetime.datetime.now():
@@ -635,16 +637,18 @@ class ChannelHandler(web.RequestHandler):
             }
 
 class PlaylistHandler(web.RequestHandler):
-    def initialize(self, video_handler_path: str, audio_handler_path: str):
+    def initialize(self, video_handler_path: str, audio_handler_path: str, default_item_type: str = "audio"):
         """
         Initialize the class with the provided video and audio handler paths.
 
         Args:
             video_handler_path (str): The path to the video handler.
             audio_handler_path (str): The path to the audio handler.
+            default_item_type (str): Default type of elements. 'audio' or 'video'
         """
         self.video_handler_path = video_handler_path
         self.audio_handler_path = audio_handler_path
+        self.default_item_type = default_item_type
 
     @gen.coroutine
     def head(self, playlist):
@@ -669,7 +673,7 @@ class PlaylistHandler(web.RequestHandler):
         global KEY, PROXIES
         playlist = playlist.split('/')
         if len(playlist) < 2:
-            playlist.append('video')
+            playlist.append(self.default_item_type)
         playlist_name = '/'.join(playlist)
         self.set_header('Content-type', 'application/rss+xml')
         if playlist_name in playlist_feed and playlist_feed[playlist_name]['expire'] > datetime.datetime.now():
