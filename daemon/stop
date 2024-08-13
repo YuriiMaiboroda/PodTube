@@ -2,6 +2,9 @@
 SCRIPTPATH=$(dirname "$(realpath "$0")")
 . $SCRIPTPATH/const-paths
 
-kill $(ps -aux | grep "podtube\.py" | sed 's/^[^\ ]\+\ \+\([0-9]\+\).*/\1/g')
+pid=$(ps -aux | grep "podtube\.py" | sed 's/^[^\ ]\+\ \+\([0-9]\+\).*/\1/g')
+if [[ -n "$pid" ]]; then
+  kill $pid
+fi
 rm -f $DIRD/podtube.pid
 rm -f $DIRD/podtube.lck

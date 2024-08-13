@@ -2,6 +2,7 @@ import logging
 import requests
 import utils
 import re
+import os
 
 from configparser import ConfigParser
 from tornado import web
@@ -9,6 +10,8 @@ from tornado import web
 HTTP_PROXY = None
 HTTPS_PROXY = None
 PROXIES = None
+
+AUDIO_DIR = "./audio"
 
 def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str, default_value = None):
     """
@@ -72,17 +75,52 @@ class ProxyRssHandler(web.RequestHandler):
             self.send_error(reason='Error get RSS')
             return
 
-        self.write(re.sub(r"(\"|\&\#34\;)(https?://)", repl=rf"\g<1>{self.request.protocol}://{self.request.host}{self.proxy_handler_path}\g<2>", string=response.text, flags=re.MULTILINE))
+        has_content = not (response.status_code in (204, 304) or (100 <= response.status_code < 200))
+
+        for (header_key, header_value) in response.headers.items():
+            if has_content or header_key != 'content-length':
+                # logging.debug(f"{header_key=}")
+                # logging.debug(f"{header_value=}")
+                self.set_header(header_key, header_value)
+
+        self.write(
+            re.sub(
+                r"(\"|\&\#34\;)(https?://)",
+                repl=rf"\g<1>{self.request.protocol}://{self.request.host}{self.proxy_handler_path}\g<2>",
+                string=response.text,
+                flags=re.MULTILINE))
 
 class ProxyHandler(web.RequestHandler):
     CONTENT_CHUNK_SIZE = 10 * 1024
 
+    def initialize(self, proxy_handler_path: str):
+        """
+        Initializes the object with the given video and audio handler paths.
+
+        :param proxy_handler_path: A string representing the path to the proxy handler.
+        """
+        self.proxy_handler_path = proxy_handler_path
+
     def make_request(self, address: str, method: str) -> None:
-        global PROXIES
+        global PROXIES, AUDIO_DIR
 
         logging.info(f"Make request ({method}): {address=}")
         if self.request.arguments:
             logging.debug(f"Make request ({method}): {address=}; {self.request.arguments=}")
+        
+        filename = address
+        if filename.endswith(".mp3"):
+            filename = filename[:-4]
+        filename = re.sub(r'\W+', '_', address)
+        filename = filename + ".mp3"
+
+        file_path = f"{AUDIO_DIR}/{filename}"
+        if os.path.exists(file_path):
+            with open(file_path, "rb") as file:
+                logging.debug(f"Return cached file for '{address}' ('{file.name}')")
+                self.write(file.read())
+                self.finish()
+                return
         
         headers = None
         for (header_key, header_value) in self.request.headers.items():
@@ -120,11 +158,27 @@ class ProxyHandler(web.RequestHandler):
 
         for (header_key, header_value) in response.headers.items():
             if has_content or header_key != 'content-length':
+                # logging.debug(f"{header_key=}")
+                # logging.debug(f"{header_value=}")
                 self.set_header(header_key, header_value)
 
         if has_content:
             content = response.content
+            # content = re.sub(
+            #     r"(\"|\&\#34\;)(https?://)",
+            #     repl=rf"\g<1>{self.request.protocol}://{self.request.host}{self.proxy_handler_path}\g<2>",
+            #     string=response.text,
+            #     flags=re.MULTILINE)
             self.write(content)
+            if response.headers.get("Content-Type") == "audio/mpeg":
+                if filename.endswith(".mp3"):
+                    filename = filename[:-4]
+                filename = re.sub(r'\W+', '_', address)
+                filename = filename + ".mp3"
+                
+                with open(file_path, "wb") as file:
+                    logging.debug(f"Save file from '{address}' to '{file.name}'")
+                    file.write(content)
 
         for cookie in response.cookies:
             self.set_cookie(

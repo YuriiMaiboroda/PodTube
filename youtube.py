@@ -676,6 +676,7 @@ class PlaylistHandler(web.RequestHandler):
             playlist.append(self.default_item_type)
         playlist_name = '/'.join(playlist)
         self.set_header('Content-type', 'application/rss+xml')
+        self.set_header('charset', 'utf-8')
         if playlist_name in playlist_feed and playlist_feed[playlist_name]['expire'] > datetime.datetime.now():
             self.write(playlist_feed[playlist_name]['feed'])
             self.finish()
@@ -836,6 +837,8 @@ class PlaylistHandler(web.RequestHandler):
                 logging.error('Error Downloading Playlist: %s', request.reason)
                 self.send_error(reason='Error Downloading Playlist Items')
                 return
+
+            # logging.debug(response)
             for item in response['items']:
                 snippet = item['snippet']
                 current_video = snippet['resourceId']['videoId']

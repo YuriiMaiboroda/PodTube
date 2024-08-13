@@ -3,5 +3,5 @@ SCRIPTPATH=$(dirname "$(realpath "$0")")
 . $SCRIPTPATH/const-paths
 
 mkdir -p $DIRDL
-python $DIR/podtube.py --log-file $LOG_FILE_PATH --config-file $CONFIG_FILE
+/home/stein/.pyenv/versions/3.12.0/bin/python $DIR/podtube.py --log-file $LOG_FILE_PATH --config-file $CONFIG_FILE
 # python $DIR/podtube.py --config-file $CONFIG_FILE
