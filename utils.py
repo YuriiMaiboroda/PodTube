@@ -16,8 +16,8 @@ metric_chart = {
     'T': 12  # Tera
 }
 
-def parametrize(url, params):
-    return url + '?' + urlencode(params)
+def parametrize(url, params, doseq=False):
+    return url + '?' + urlencode(params, doseq=doseq)
 
 def get_resolution(yt_video):
     return int(''.join(filter(str.isdigit, yt_video.resolution[:-1])))

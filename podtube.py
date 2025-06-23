@@ -11,11 +11,14 @@ import log_output
 from tornado import ioloop, web
 import misaka
 import utils
-import youtube
+import youtube.handlers.audio_handler
+import youtube.handlers.channel_handler
+import youtube.handlers.playlist_handler
+import youtube.handlers.clear_cache_handler
+import youtube.youtube
 import bitchute
 import rumble
 import dailymotion
-import proxy
 
 # Handled automatically by git pre-commit hook
 __version__ = '2024.02.07.4'
@@ -65,27 +68,25 @@ def make_app(config: ConfigParser):
     Returns:
     - web.Application - the initialized web application.
     """
-    youtube.init(config)
-    proxy.init(config)
+    youtube.youtube.init(config)
     handlers = [
-        (r'/youtube/channel/(.*)', youtube.ChannelHandler, {
-            'video_handler_path': '/youtube/video/',
+        (r'/youtube/channel/(.*)', youtube.handlers.channel_handler.ChannelHandler, {
             'audio_handler_path': '/youtube/audio/',
         }),
-        (r'/youtube/playlist/(.*)', youtube.PlaylistHandler, {
-            'video_handler_path': '/youtube/video/',
+        (r'/youtube/playlist/(.*)', youtube.handlers.playlist_handler.PlaylistHandler, {
             'audio_handler_path': '/youtube/audio/',
         }),
-        (r'/youtube/video/(.*)', youtube.VideoHandler),
-        (r'/youtube/audio/(.*)', youtube.AudioHandler),
-        (r'/youtube/user/@(.*)', youtube.UserHandler, {'channel_handler_path': '/youtube/channel/'}),
-        (r'/youtube/cache/', youtube.ClearCacheHandler),
+        (r'/youtube/audio/(.*)', youtube.handlers.audio_handler.AudioHandler),
+        (r'/youtube/cache/', youtube.handlers.clear_cache_handler.ClearCacheHandler),
+
         (r'/rumble/user/(.*)', rumble.UserHandler),
         (r'/rumble/channel/(.*)', rumble.ChannelHandler),
         (r'/rumble/video/(.*)', rumble.VideoHandler),
         (r'/rumble/category/(.*)', rumble.CategoryHandler),
+
         (r'/bitchute/channel/(.*)', bitchute.ChannelHandler),
         (r'/bitchute/video/(.*)', bitchute.VideoHandler),
+
         (r'/dailymotion/channel/(.*)', dailymotion.ChannelHandler),
         (r'/dailymotion/video/(.*)', dailymotion.VideoHandler),
 
@@ -185,7 +186,12 @@ if __name__ == '__main__':
     for file in glob.glob('audio/*.temp'):
         os.remove(file)
     logging.info("Start server")
-    app = make_app(conf)
-    app.listen(args.port)
-    logging.info(f'Started listening on {args.port}')
-    ioloop.IOLoop.instance().start()
+    try:
+        app = make_app(conf)
+        app.listen(args.port)
+        logging.info(f'Started listening on {args.port}')
+        ioloop.IOLoop.instance().start()
+    except KeyboardInterrupt:
+        logging.info("stopping server")
+        ioloop.IOLoop.instance().stop()
+        logging.info("Server stopped cleanly")
