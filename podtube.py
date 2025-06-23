@@ -88,8 +88,7 @@ def make_app(config: ConfigParser):
         (r'/bitchute/video/(.*)', bitchute.VideoHandler),
         (r'/dailymotion/channel/(.*)', dailymotion.ChannelHandler),
         (r'/dailymotion/video/(.*)', dailymotion.VideoHandler),
-        (r'/proxy/rss/(.*)', proxy.ProxyRssHandler, {'proxy_handler_path': '/proxy/all/'}),
-        (r'/proxy/all/(.*)', proxy.ProxyHandler, {'proxy_handler_path': '/proxy/all/'}),
+
         (r'/config.ini', web.RedirectHandler, {'url': '/'}),
         (r'/README.md', web.RedirectHandler, {'url': '/'}),
         (r'/Dockerfile', web.RedirectHandler, {'url': '/'}),
