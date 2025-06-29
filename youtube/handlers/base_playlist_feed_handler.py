@@ -1,17 +1,15 @@
+import datetime
+import pyyoutube
+
 from feedgen.feed import FeedGenerator
 from feedgen.ext.podcast import PodcastExtension
 from feedgen.ext.podcast_entry import PodcastEntryExtension
-import datetime
-import isodate
-import requests
-from tornado import ioloop, web
+from tornado import ioloop
 
 from youtube.cache import CacheItem
-import youtube.config_utils
-from youtube.handlers.youtube_response.videos_structure import YoutubeVideoItemContentDetails, YoutubeVideoItemLiveStreamingDetails, YoutubeVideoItemStatus, YoutubeVideosResponse
+from youtube.handlers.base_youtube_handler import BaseYoutubeHandler
 from youtube.logging_utils import TaggedLogger
-from youtube.youtube import cache_manager, __version__
-from youtube.handlers.youtube_response.playlist_items_structure import YoutubePlaylistItem, YoutubePlaylistItemsResponse
+import youtube.config_utils
 import youtube.youtube
 
 FEED_CACHE_NAME = 'feeds'
@@ -32,20 +30,17 @@ class FeedCacheItem(CacheItem):
         super().__init__(expire or (datetime.datetime.now() + datetime.timedelta(seconds=youtube.config_utils.PLAYLIST_EXPIRATION_TIME)), name)
         self.feed = feed
 
-        
-class BasePlaylistFeedHandler(web.RequestHandler):
+class BasePlaylistFeedHandler(BaseYoutubeHandler):
     def initialize(self, logger:TaggedLogger, audio_handler_path:str):
-        super().initialize()
-        self.logger = logger
+        super().initialize(logger)
         self.audio_handler_path = audio_handler_path
 
-    async def head(self, playlist):
+    async def head(self, **kwargs):
         """
         A coroutine function that sets the header for the given playlist.
 
         Args:
             self: The instance of the class.
-            playlist: The playlist for which the header is being set.
 
         Returns:
             None
@@ -53,17 +48,13 @@ class BasePlaylistFeedHandler(web.RequestHandler):
         self.set_header('Content-type', 'application/rss+xml')
         self.set_header('Accept-Ranges', 'bytes')
 
-    def prepare(self):
-        self.set_header('Content-type', 'application/rss+xml')
-        self.set_header('charset', 'utf-8')
-
     def try_response_from_cache(self, item_name: str) -> bool:
         """
         Attempts to retrieve a feed from the cache.
         Args:
             item_name (str): The name of the item to retrieve from the cache.
         """
-        channel_feed:FeedCacheItem = cache_manager.get(FEED_CACHE_NAME, item_name)
+        channel_feed:FeedCacheItem = youtube.youtube.cache_manager.get(FEED_CACHE_NAME, item_name)
         if channel_feed and channel_feed.expire > datetime.datetime.now():
             self.write(channel_feed.feed)
             self.finish()
@@ -78,7 +69,7 @@ class BasePlaylistFeedHandler(web.RequestHandler):
             item_name (str): The name of the item to save in the cache.
             feed (str): The generated feed content to be cached.
         """
-        cache_manager.set(
+        youtube.youtube.cache_manager.set(
             FEED_CACHE_NAME,
             item_name,
             FeedCacheItem(name=name, feed=feed)
@@ -103,7 +94,7 @@ class BasePlaylistFeedHandler(web.RequestHandler):
         fg_podcast:PodcastExtension = getattr(fg, podcast_extension_name)
         fg.generator(
             'PodTube (python-feedgen)',
-            __version__,
+            youtube.youtube.__version__,
             'https://github.com/YuriiMaiboroda/PodTube'
         )
         fg.id(id)
@@ -128,64 +119,73 @@ class BasePlaylistFeedHandler(web.RequestHandler):
         fg.updated(str(datetime.datetime.now(datetime.timezone.utc)))
 
         try:
-            max_items = self.get_argument("max_items", "-1")
-            max_items = int(max_items)
-            self.logger.info(f"Will grab maximum {max_items} videos", log_tag)
+            max_items = int(self.get_argument("max_items", "-1"))
+            self.logger.debug(f"Will grab maximum {max_items} videos", log_tag)
         except ValueError:
             self.logger.error(f"Failed parse max_count to int: {max_items}", log_tag)
             max_items = 1
 
-        playlist_items_response:YoutubePlaylistItemsResponse = YoutubePlaylistItemsResponse()
-        playlist_items_response.nextPageToken = "first_page"
+        self.youtubeapi.get_playlist_items(
+            playlist_id=playlist,
+            parts=['snippet'],
+
+        )
+        isFirstRequest = True
+        playlist_items_response:pyyoutube.PlaylistItemListResponse = pyyoutube.PlaylistItemListResponse()
+
         items_count = 0
-        while playlist_items_response.get('nextPageToken', None) and (max_items < 1 or items_count < max_items):
+        while (isFirstRequest or playlist_items_response.nextPageToken) and (max_items < 1 or items_count < max_items):
+            isFirstRequest = False
+            restItemsCount = max_items - items_count if max_items >= 0 else None
             next_page = playlist_items_response.nextPageToken
-            if next_page == 'first_page':
-                next_page = None
-            payload = {
-                'part': 'snippet',
-                'maxResults': 50 if max_items < 1 or max_items - items_count > 50 else max_items - items_count,
-                'playlistId': playlist,
-                'key': youtube.config_utils.KEY,
-                'pageToken': next_page
-            }
-            request = await ioloop.IOLoop.current().run_in_executor(
-                None,
-                lambda: requests.get('https://www.googleapis.com/youtube/v3/playlistItems', params=payload, proxies=youtube.config_utils.PROXIES)
-            )
-            playlist_items_response:YoutubePlaylistItemsResponse = request.json()
-            if request.status_code == 200:
-                self.logger.debug('Downloaded Channel Information', log_tag)
-            elif request.status_code == 404:
-                self.logger.debug(f'Playlist not found. {playlist_items_response=}', log_tag)
+
+            try:
+                playlist_items_response = await ioloop.IOLoop.current().run_in_executor(
+                    None,
+                    lambda: self.youtubeapi.get_playlist_items(
+                        playlist_id=playlist,
+                        parts=['snippet'],
+                        page_token=next_page,
+                        count=restItemsCount,
+                        limit=50
+                    )
+                )
+            except pyyoutube.PyYouTubeException as e:
+                if e.status_code != 404:
+                    self.logger.error(f'Error retrieving playlist items: {e}', log_tag)
+                    self.send_error(reason='Error retrieving playlist items', status_code=404 if e.status_code == 404 else 500)
+                    return None
+
+                self.logger.error(f'Playlist not found: {playlist}', log_tag)
                 if playlist_items_response.items is None:
                     playlist_items_response.items = []
-            else:
-                # self.logger.debug(f'Request not 200: {payload=}; {request=}', log_tag)
-                self.logger.error(f'Error Downloading Channel: {request.reason}', log_tag)
-                return None
-            
-            payload = {
-                'part': 'contentDetails,liveStreamingDetails,status',
-                'id': ','.join(item.snippet.resourceId.videoId for item in playlist_items_response.items),
-                'key': youtube.config_utils.KEY,
-            }
-            request = await ioloop.IOLoop.current().run_in_executor(
-                None,
-                lambda: requests.get('https://www.googleapis.com/youtube/v3/videos', params=payload, proxies=youtube.config_utils.PROXIES)
-            )
-            
-            all_video_contentDetails:YoutubeVideoItemContentDetails = None
-            all_video_status:YoutubeVideoItemStatus = None
-            all_video_liveStreamingDetails:YoutubeVideoItemLiveStreamingDetails = None
 
-            if request.status_code == 200:
-                channel_response:YoutubeVideosResponse = request.json()
-                all_video_contentDetails = {item.id: item.contentDetails or None for item in channel_response.items}
-                all_video_status = {item.id: item.get('status', None) for item in channel_response.items}
-                all_video_liveStreamingDetails = {item.id: item.get('liveStreamingDetails', None) for item in channel_response.items}
-            elif request.status_code != 404:
-                self.logger.error(f'Error Downloading info about video: {request.reason}', log_tags)
+            try:
+                videos_response:pyyoutube.VideoListResponse = await ioloop.IOLoop.current().run_in_executor(
+                    None,
+                    lambda: self.youtubeapi.get_video_by_id(
+                        video_id=','.join(item.snippet.resourceId.videoId for item in playlist_items_response.items),
+                        parts=['contentDetails', 'liveStreamingDetails', 'status'],
+                        hl=self.hl
+                    )
+                )
+            except pyyoutube.PyYouTubeException as e:
+                self.logger.error(f'Error retrieving video details: {e}', log_tag)
+
+            all_video_contentDetails:dict[str, pyyoutube.VideoContentDetails] = {}
+            all_video_status:dict[str, pyyoutube.VideoStatus] = {}
+            all_video_liveStreamingDetails:dict[str, pyyoutube.VideoLiveStreamingDetails] = {}
+
+            if videos_response:
+                for item in videos_response.items:
+                    if item.id is None:
+                        continue
+                    if item.contentDetails is not None:
+                        all_video_contentDetails[item.id] = item.contentDetails
+                    if item.status is not None:
+                        all_video_status[item.id] = item.status
+                    if item.liveStreamingDetails is not None:
+                        all_video_liveStreamingDetails[item.id] = item.liveStreamingDetails
 
             self.update_file_names(playlist_items_response.items)
 
@@ -194,18 +194,18 @@ class BasePlaylistFeedHandler(web.RequestHandler):
                 current_video = snippet.resourceId.videoId
                 log_tags = [log_tag, current_video]
 
-                video_contentDetails:YoutubeVideoItemContentDetails = all_video_contentDetails.get(current_video, None) if all_video_contentDetails else None
-                video_status:YoutubeVideoItemStatus = all_video_status.get(current_video, None) if all_video_status else None
-                video_liveStreamingDetails:YoutubeVideoItemLiveStreamingDetails = all_video_liveStreamingDetails.get(current_video, None) if all_video_liveStreamingDetails else None
+                video_contentDetails:pyyoutube.VideoContentDetails = all_video_contentDetails.get(current_video, None) if all_video_contentDetails else None
+                video_status:pyyoutube.VideoStatus = all_video_status.get(current_video, None) if all_video_status else None
+                video_liveStreamingDetails:pyyoutube.VideoLiveStreamingDetails = all_video_liveStreamingDetails.get(current_video, None) if all_video_liveStreamingDetails else None
 
                 if video_status is not None:
-                    if video_status.get('privacyStatus', 'public').lower() == 'private':
+                    if video_status.privacyStatus and video_status.privacyStatus.lower() == 'private':
                         continue
                 elif 'private' in snippet.title.lower():
                     continue
 
                 if snippet.channelTitle is None:
-                    snippet.channelTitle = snippet.get('channelId', f'Unknown Channel. {playlist}')
+                    snippet.channelTitle = snippet.channelId or f'Unknown Channel. {playlist}'
 
                 self.logger.debug(f'{snippet.title}', log_tags)
                 items_count += 1
@@ -214,10 +214,8 @@ class BasePlaylistFeedHandler(web.RequestHandler):
                 fe_podcast:PodcastEntryExtension = getattr(fe, podcast_extension_name)
                 fe.title(snippet.title)
                 fe.id(current_video)
-                icon = max(
-                    snippet.thumbnails,
-                    key=lambda x: snippet.thumbnails[x].width)
-                fe_podcast.itunes_image(snippet.thumbnails[icon].url)
+                thumbnail:pyyoutube.models.common.Thumbnail = self.getMaxResolutionThumbnail(snippet.thumbnails)
+                fe_podcast.itunes_image(thumbnail.url if thumbnail else None)
                 fe.updated(snippet.publishedAt)
                 final_url = f'{self.request.protocol}://{self.request.host}{self.audio_handler_path}{current_video}'
                 fe.enclosure(
@@ -235,11 +233,12 @@ class BasePlaylistFeedHandler(web.RequestHandler):
                 if video_liveStreamingDetails:
                     stream_infos = []
                     if video_liveStreamingDetails.scheduledStartTime:
-                        stream_infos.append(f"Live stream scheduled to start at {video_liveStreamingDetails.scheduledStartTime}")
+                        stream_infos.append(f"Live stream scheduled to start at {self.getDateTimeStingInLocalTimezone(video_liveStreamingDetails.scheduledStartTime)}")
                     if video_liveStreamingDetails.actualStartTime:
-                        stream_infos.append(f"Live stream started at {video_liveStreamingDetails.actualStartTime}")
+                        stream_infos.append(f"Live stream started at {self.getDateTimeStingInLocalTimezone(video_liveStreamingDetails.actualStartTime)}")
                     if video_liveStreamingDetails.actualEndTime:
-                        stream_infos.append(f"Live stream ended at {video_liveStreamingDetails.actualEndTime}")
+                        stream_infos.append(f"Live stream ended at {self.getDateTimeStingInLocalTimezone(video_liveStreamingDetails.actualEndTime)}")
+                        stream_infos.append("Live stream is ended")
                     if stream_infos:
                         description = f"{description}\n\nLive stream information:\n" + "\n".join(stream_infos)
 
@@ -247,10 +246,9 @@ class BasePlaylistFeedHandler(web.RequestHandler):
                 fe_podcast.itunes_summary(description)
                 fe.description(description)
 
-                duration = video_contentDetails and video_contentDetails.get('duration', None) or None
+                duration = video_contentDetails.get_video_seconds_duration() if video_contentDetails else None
                 if duration is not None:
-                    duration:datetime.timedelta = isodate.parse_duration(duration)
-                    fe_podcast.itunes_duration(int(duration.total_seconds()))
+                    fe_podcast.itunes_duration(duration)
             
 
         self.logger.debug(f"Got {items_count} videos", log_tag)
@@ -260,8 +258,11 @@ class BasePlaylistFeedHandler(web.RequestHandler):
         self.save_feed_to_cache(cache_id, title, feed)
 
         return feed
+
+    def getDateTimeStingInLocalTimezone(self, datetime:str) -> str:
+        return pyyoutube.DatetimeTimeMixin.string_to_datetime(datetime).astimezone().replace(tzinfo=None).isoformat(' ', 'seconds')
     
-    def update_file_names(self, items:list[YoutubePlaylistItem]):
+    def update_file_names(self, items:list[pyyoutube.PlaylistItem]) -> None:
         """
         Updates the file names of the items in the playlist.
 
@@ -272,7 +273,19 @@ class BasePlaylistFeedHandler(web.RequestHandler):
             None
         """
         for item in items:
-            item_file:CacheItem = cache_manager.get(youtube.youtube.AUDIO_FILES_CACHE_NAME, item.snippet.resourceId.videoId)
+            item_file:CacheItem = youtube.youtube.cache_manager.get(youtube.youtube.AUDIO_FILES_CACHE_NAME, item.snippet.resourceId.videoId)
             if item_file is None:
                 continue
             item_file.name = item.snippet.title
+
+    def getMaxResolutionThumbnail(self, thumbnails:pyyoutube.Thumbnails) -> pyyoutube.models.common.Thumbnail | None:
+        """
+        Returns the highest resolution thumbnail from the provided thumbnails.
+
+        Args:
+            thumbnails (pyyoutube.Thumbnails): The thumbnails object containing various resolutions.
+        
+        Returns:
+            pyyoutube.Thumbnail: The thumbnail with the highest resolution available.
+        """
+        return thumbnails.maxres or thumbnails.high or thumbnails.medium or thumbnails.standard or thumbnails.default

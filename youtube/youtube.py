@@ -20,7 +20,7 @@ import youtube.config_utils
 from youtube.logging_utils import TaggedLogger, redirect_std_streams
 from youtube.cache import CacheManager, CacheItem
 
-__version__ = 'v2025.06.22.0'
+__version__ = 'v2025.06.30.0'
 
 class UnavailableType(Enum):
     STREAM = 1

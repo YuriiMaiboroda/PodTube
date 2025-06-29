@@ -1,11 +1,9 @@
-import youtube.config_utils
-from youtube.handlers.base_playlist_feed_handler import BasePlaylistFeedHandler
-from youtube.handlers.youtube_response.channel_structure import YoutubeChannelResponseStructure
-from youtube.logging_utils import TaggedLogger
-from youtube.youtube import __version__
+import pyyoutube
 
-import requests
 from tornado import ioloop
+from youtube.logging_utils import TaggedLogger
+
+from youtube.handlers.base_playlist_feed_handler import BasePlaylistFeedHandler
 
 logger = TaggedLogger(__name__)
 
@@ -62,49 +60,39 @@ class ChannelHandler(BasePlaylistFeedHandler):
         else:
             channel_id = channel
 
-        payload = {
-            'part': 'snippet,contentDetails,topicDetails',
-            'maxResults': 1,
-            'fields': 'items',
-            'key': youtube.config_utils.KEY
-        }
-        if handle:
-            payload['forHandle'] = handle
-        else:
-            payload['id'] = channel_id
-
-        request = await ioloop.IOLoop.current().run_in_executor(
-            None,
-            lambda: requests.get('https://www.googleapis.com/youtube/v3/channels', params=payload, proxies=youtube.config_utils.PROXIES)
-        )
-        if request.status_code == 200:
-            logger.debug('Downloaded Channel Information', channel)
-        else:
-            # logger.debug(f'Request not 200: {payload=}; {request=}', channel)
-            logger.error(f'Error Downloading Channel: {request.reason}', channel)
-            self.send_error(reason='Error Downloading Channel', status_code=404 if request.status_code == 404 else 500)
+        try:
+            channel_response:pyyoutube.ChannelListResponse = await ioloop.IOLoop.current().run_in_executor(
+                None,
+                lambda: self.youtubeapi.get_channel_info(
+                    channel_id=channel_id,
+                    for_handle=handle,
+                    parts=['snippet', 'contentDetails', 'topicDetails'],
+                    hl=self.hl,
+                )
+            )
+        except pyyoutube.PyYouTubeException as e:
+            logger.error(f'Error retrieving channel information: {e}', channel)
+            self.send_error(reason='Error retrieving channel information', status_code=404 if e.status_code == 404 else 500)
             return
 
-        channel_response:YoutubeChannelResponseStructure = request.json()
+        logger.debug('Downloaded Channel Information', channel)
+
         channel_data = channel_response.items[0]
-        #get upload playlist
         playlist = channel_data.contentDetails.relatedPlaylists.uploads
-        categories = [category.rsplit('/', 1)[-1] for category in channel_data.get('topicDetails', {}).get('topicCategories', [])]
+        categories = [category.rsplit('/', 1)[-1] for category in channel_data.topicDetails.topicCategories] if channel_data.topicDetails and channel_data.topicDetails.topicCategories else []
         channel_data = channel_data.snippet
 
-        title = channel_data.get('title', channel)
+        title = channel_data.title or channel
 
         logger.info(f'Channel: {channel} ({title})', channel)
-        icon_type:str = max(
-            channel_data.thumbnails,
-            key=lambda x: channel_data.thumbnails[x].width
-        )
+        thumbnails = channel_data.thumbnails
+        thumbnail = self.getMaxResolutionThumbnail(thumbnails)
 
-        description = channel_data.get('description', None) or ' '
-        icon_url = channel_data.thumbnails[icon_type].url if icon_type else ""
+        description = channel_data.description or ' '
+        icon_url = thumbnail.url if thumbnail else ""
         uniq_id = f'{self.request.protocol}://{self.request.host}{self.request.uri}'
         channel_url = f'https://www.youtube.com/' + (handle or f'channel/{channel}')
-        language = channel_data.get('defaultLanguage', 'en-US')
+        language = channel_data.defaultLanguage or 'en-US'
         feed = await self.build_feed(
             channel,
             playlist,

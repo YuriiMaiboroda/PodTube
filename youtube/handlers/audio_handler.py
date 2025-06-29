@@ -1,13 +1,5 @@
 from youtube.logging_utils import TaggedLogger
-from youtube.youtube import (
-    UnavailableType,
-    VideoLinkCacheItem,
-    add_video_to_conversion_queue,
-    get_audio_file_path,
-    is_video_in_conversion_queue,
-    VIEDO_LINKS_CACHE_NAME,
-    cache_manager,
-)
+import youtube.youtube
 
 from tornado import gen, httputil, iostream, web
 
@@ -46,23 +38,23 @@ class AudioHandler(web.RequestHandler):
         Returns:
             bool: True if the audio is unavailable, False otherwise.
         """
-        video_link_item:VideoLinkCacheItem = cache_manager.get(VIEDO_LINKS_CACHE_NAME, audio)
+        video_link_item:youtube.youtube.VideoLinkCacheItem = youtube.youtube.cache_manager.get(youtube.youtube.VIEDO_LINKS_CACHE_NAME, audio)
         if video_link_item:
             # logger.info(f'Audio: {audio} is not available ({self.request.remote_ip})', audio)
             match video_link_item.unavailable_type:
-                case UnavailableType.STREAM:
+                case youtube.youtube.UnavailableType.STREAM:
                     self.set_status(422) # Unprocessable Content. E.g. the video is a live stream
                     return True
-                case UnavailableType.SPONSOR:
+                case youtube.youtube.UnavailableType.SPONSOR:
                     self.set_status(402) # Payment required
                     return True
-                case UnavailableType.LOGIN:
+                case youtube.youtube.UnavailableType.LOGIN:
                     self.set_status(401) # Unauthorized. E.g. age restriction
                     return True
-                case UnavailableType.REMOVED:
+                case youtube.youtube.UnavailableType.REMOVED:
                     self.set_status(410) # Gone
                     return True
-                case UnavailableType.PRIVATE:
+                case youtube.youtube.UnavailableType.PRIVATE:
                     self.set_status(403)
                     return True
         return False
@@ -75,10 +67,10 @@ class AudioHandler(web.RequestHandler):
 
         if (self.checkUnavailable(audio)):
             return
-        mp3_file = get_audio_file_path(audio)
+        mp3_file = youtube.youtube.get_audio_file_path(audio)
         if not os.path.exists(mp3_file):
-            add_video_to_conversion_queue(audio)
-            while is_video_in_conversion_queue(audio):
+            youtube.youtube.add_video_to_conversion_queue(audio)
+            while youtube.youtube.is_video_in_conversion_queue(audio):
                 await gen.sleep(0.5)
                 if self.disconnected:
                     # logger.info(f'User was disconnected while requested audio: {audio} ({self.request.remote_ip})', audio)

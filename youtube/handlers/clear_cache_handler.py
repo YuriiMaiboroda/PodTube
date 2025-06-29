@@ -1,12 +1,8 @@
 from youtube.cache import CacheItem
-import youtube.config_utils
 from youtube.logging_utils import TaggedLogger
-from youtube.youtube import __version__, cache_manager
+import youtube.youtube
 
 from tornado import web
-
-import glob
-import os
 
 logger = TaggedLogger(__name__)
 
@@ -30,7 +26,7 @@ class ClearCacheHandler(web.RequestHandler):
         A function to handle clearing the cache for various video and playlist items.
         """
         
-        all_cache = cache_manager.get_all_cache_items()
+        all_cache = youtube.youtube.cache_manager.get_all_cache_items()
 
         clear_cache_requests = {}
         for cache_type in all_cache:
@@ -46,10 +42,10 @@ class ClearCacheHandler(web.RequestHandler):
 
         for cache_type, value in clear_cache_requests.items():
             if value == ClearCacheHandler.ALL:
-                deleted_count = cache_manager.cleanup_cache(cache_type)
+                deleted_count = youtube.youtube.cache_manager.cleanup_cache(cache_type)
                 logger.info(f'Cleared all items from {cache_type} cache ({deleted_count} items deleted)', 'ClearCache')
             else:
-                deleted_count = cache_manager.cleanup_cache(cache_type, value)
+                deleted_count = youtube.youtube.cache_manager.cleanup_cache(cache_type, value)
                 logger.info(f'Cleared item \"{value}\" from {cache_type} cache ({deleted_count} items deleted)', 'ClearCache')
 
         if needClear:
@@ -58,7 +54,7 @@ class ClearCacheHandler(web.RequestHandler):
             self.redirect(selfurl, permanent = False)
             return
 
-        self.write(f'<html><head><title>PodTube (v{__version__}) cache</title>')
+        self.write(f'<html><head><title>PodTube (v{youtube.youtube.__version__}) cache</title>')
         self.write('<link rel="shortcut icon" href="favicon.ico">')
         self.write('</head><body>')
 

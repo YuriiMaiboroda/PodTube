@@ -10,3 +10,4 @@ pytube @ git+https://github.com/YuriiMaiboroda/pytube@fixes
 yt-dlp
 cloudscraper
 isodate
+python-youtube
