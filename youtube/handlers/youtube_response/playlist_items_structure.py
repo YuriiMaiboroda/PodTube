@@ -1,58 +1,58 @@
-from typing import TypedDict
+from pydantic import BaseModel
 
 from youtube.handlers.youtube_response.common_structure import YoutubePageInfo, YoutubeThumbnail
 
-class YoutubePlaylistItemResourceId(TypedDict):
+class YoutubePlaylistItemResourceId(BaseModel):
     """
-    A TypedDict representing the resource ID of a YouTube playlist item.
+    Representing the resource ID of a YouTube playlist item.
     Typically contains 'videoId'.
     """
-    videoId: str | None
+    videoId: str | None = None
 
-class YoutubePlaylistItemSnippet(TypedDict):
+class YoutubePlaylistItemSnippet(BaseModel):
     """
-    A TypedDict representing the snippet of a YouTube playlist item.
+    Representing the snippet of a YouTube playlist item.
     """
-    publishedAt: str | None
-    channelId: str | None
-    title: str | None
-    description: str | None
-    thumbnails: dict[str, YoutubeThumbnail] | None
-    channelTitle: str | None
-    videoOwnerChannelTitle: str | None
-    videoOwnerChannelId: str | None
-    playlistId: str | None
-    position: int | None
-    resourceId: YoutubePlaylistItemResourceId | None
+    publishedAt: str | None = None
+    channelId: str | None = None
+    title: str | None = None
+    description: str | None = None
+    thumbnails: dict[str, YoutubeThumbnail] | None = None
+    channelTitle: str | None = None
+    videoOwnerChannelTitle: str | None = None
+    videoOwnerChannelId: str | None = None
+    playlistId: str | None = None
+    position: int | None = None
+    resourceId: YoutubePlaylistItemResourceId | None = None
 
-class YoutubePlaylistItemContentDetails(TypedDict):
+class YoutubePlaylistItemContentDetails(BaseModel):
     """
-    A TypedDict representing the content details of a YouTube playlist item.
+    Representing the content details of a YouTube playlist item.
     """
-    videoId: str | None
-    videoPublishedAt: str | None
-    note: str | None
+    videoId: str | None = None
+    videoPublishedAt: str | None = None
+    note: str | None = None
 
-class YoutubePlaylistItemStatus(TypedDict):
+class YoutubePlaylistItemStatus(BaseModel):
     """
-    A TypedDict representing the status of a YouTube playlist item.
+    Representing the status of a YouTube playlist item.
     """
-    privacyStatus: str | None
+    privacyStatus: str | None = None
 
-class YoutubePlaylistItem(TypedDict):
+class YoutubePlaylistItem(BaseModel):
     """
-    A TypedDict representing a YouTube playlist item.
+    Representing a YouTube playlist item.
     """
-    id: str | None
-    snippet: YoutubePlaylistItemSnippet | None
-    contentDetails: YoutubePlaylistItemContentDetails | None
-    status: YoutubePlaylistItemStatus | None
+    id: str | None = None
+    snippet: YoutubePlaylistItemSnippet | None = None
+    contentDetails: YoutubePlaylistItemContentDetails | None = None
+    status: YoutubePlaylistItemStatus | None = None
 
-class YoutubePlaylistItemsResponse(TypedDict):
+class YoutubePlaylistItemsResponse(BaseModel):
     """
-    A TypedDict representing the response structure for YouTube playlist items.
+    Representing the response structure for YouTube playlist items.
     """
-    items: list[YoutubePlaylistItem] | None
-    nextPageToken: str | None
-    prevPageToken: str | None
-    pageInfo: YoutubePageInfo | None
+    items: list[YoutubePlaylistItem] | None = None
+    nextPageToken: str | None = None
+    prevPageToken: str | None = None
+    pageInfo: YoutubePageInfo | None = None

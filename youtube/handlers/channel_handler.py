@@ -86,22 +86,22 @@ class ChannelHandler(BasePlaylistFeedHandler):
             return
 
         channel_response:YoutubeChannelResponseStructure = request.json()
-        channel_data = channel_response['items'][0]
+        channel_data = channel_response.items[0]
         #get upload playlist
-        playlist = channel_data['contentDetails']['relatedPlaylists']['uploads']
+        playlist = channel_data.contentDetails.relatedPlaylists.uploads
         categories = [category.rsplit('/', 1)[-1] for category in channel_data.get('topicDetails', {}).get('topicCategories', [])]
-        channel_data = channel_data['snippet']
+        channel_data = channel_data.snippet
 
         title = channel_data.get('title', channel)
 
         logger.info(f'Channel: {channel} ({title})', channel)
         icon_type:str = max(
-            channel_data['thumbnails'],
-            key=lambda x: channel_data['thumbnails'][x]['width']
+            channel_data.thumbnails,
+            key=lambda x: channel_data.thumbnails[x].width
         )
 
         description = channel_data.get('description', None) or ' '
-        icon_url = channel_data['thumbnails'][icon_type]['url'] if icon_type else ""
+        icon_url = channel_data.thumbnails[icon_type].url if icon_type else ""
         uniq_id = f'{self.request.protocol}://{self.request.host}{self.request.uri}'
         channel_url = f'https://www.youtube.com/' + (handle or f'channel/{channel}')
         language = channel_data.get('defaultLanguage', 'en-US')

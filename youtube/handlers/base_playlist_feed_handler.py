@@ -136,10 +136,10 @@ class BasePlaylistFeedHandler(web.RequestHandler):
             max_items = 1
 
         playlist_items_response:YoutubePlaylistItemsResponse = YoutubePlaylistItemsResponse()
-        playlist_items_response['nextPageToken'] = "first_page"
+        playlist_items_response.nextPageToken = "first_page"
         items_count = 0
         while playlist_items_response.get('nextPageToken', None) and (max_items < 1 or items_count < max_items):
-            next_page = playlist_items_response['nextPageToken']
+            next_page = playlist_items_response.nextPageToken
             if next_page == 'first_page':
                 next_page = None
             payload = {
@@ -158,8 +158,8 @@ class BasePlaylistFeedHandler(web.RequestHandler):
                 self.logger.debug('Downloaded Channel Information', log_tag)
             elif request.status_code == 404:
                 self.logger.debug(f'Playlist not found. {playlist_items_response=}', log_tag)
-                if 'items' not in playlist_items_response:
-                    playlist_items_response['items'] = []
+                if playlist_items_response.items is None:
+                    playlist_items_response.items = []
             else:
                 # self.logger.debug(f'Request not 200: {payload=}; {request=}', log_tag)
                 self.logger.error(f'Error Downloading Channel: {request.reason}', log_tag)
@@ -167,7 +167,7 @@ class BasePlaylistFeedHandler(web.RequestHandler):
             
             payload = {
                 'part': 'contentDetails,liveStreamingDetails,status',
-                'id': ','.join(item['snippet']['resourceId']['videoId'] for item in playlist_items_response['items']),
+                'id': ','.join(item.snippet.resourceId.videoId for item in playlist_items_response.items),
                 'key': youtube.config_utils.KEY,
             }
             request = await ioloop.IOLoop.current().run_in_executor(
@@ -181,17 +181,17 @@ class BasePlaylistFeedHandler(web.RequestHandler):
 
             if request.status_code == 200:
                 channel_response:YoutubeVideosResponse = request.json()
-                all_video_contentDetails = {item['id']: item.get('contentDetails', None) for item in channel_response['items']}
-                all_video_status = {item['id']: item.get('status', None) for item in channel_response['items']}
-                all_video_liveStreamingDetails = {item['id']: item.get('liveStreamingDetails', None) for item in channel_response['items']}
+                all_video_contentDetails = {item.id: item.contentDetails or None for item in channel_response.items}
+                all_video_status = {item.id: item.get('status', None) for item in channel_response.items}
+                all_video_liveStreamingDetails = {item.id: item.get('liveStreamingDetails', None) for item in channel_response.items}
             elif request.status_code != 404:
                 self.logger.error(f'Error Downloading info about video: {request.reason}', log_tags)
 
-            self.update_file_names(playlist_items_response['items'])
+            self.update_file_names(playlist_items_response.items)
 
-            for item in playlist_items_response['items']:
-                snippet = item['snippet']
-                current_video = snippet['resourceId']['videoId']
+            for item in playlist_items_response.items:
+                snippet = item.snippet
+                current_video = snippet.resourceId.videoId
                 log_tags = [log_tag, current_video]
 
                 video_contentDetails:YoutubeVideoItemContentDetails = all_video_contentDetails.get(current_video, None) if all_video_contentDetails else None
@@ -201,45 +201,45 @@ class BasePlaylistFeedHandler(web.RequestHandler):
                 if video_status is not None:
                     if video_status.get('privacyStatus', 'public').lower() == 'private':
                         continue
-                elif 'private' in snippet['title'].lower():
+                elif 'private' in snippet.title.lower():
                     continue
 
-                if snippet.get('channelTitle', None) is None:
-                    snippet['channelTitle'] = snippet.get('channelId', f'Unknown Channel. {playlist}')
+                if snippet.channelTitle is None:
+                    snippet.channelTitle = snippet.get('channelId', f'Unknown Channel. {playlist}')
 
-                self.logger.debug(f'{snippet['title']}', log_tags)
+                self.logger.debug(f'{snippet.title}', log_tags)
                 items_count += 1
 
                 fe = fg.add_entry()
                 fe_podcast:PodcastEntryExtension = getattr(fe, podcast_extension_name)
-                fe.title(snippet['title'])
+                fe.title(snippet.title)
                 fe.id(current_video)
                 icon = max(
-                    snippet['thumbnails'],
-                    key=lambda x: snippet['thumbnails'][x]['width'])
-                fe_podcast.itunes_image(snippet['thumbnails'][icon]['url'])
-                fe.updated(snippet['publishedAt'])
+                    snippet.thumbnails,
+                    key=lambda x: snippet.thumbnails[x].width)
+                fe_podcast.itunes_image(snippet.thumbnails[icon].url)
+                fe.updated(snippet.publishedAt)
                 final_url = f'{self.request.protocol}://{self.request.host}{self.audio_handler_path}{current_video}'
                 fe.enclosure(
                     url=final_url,
                     type="audio/mpeg"
                 )
-                fe.author(name=snippet['channelTitle'])
-                fe_podcast.itunes_author(snippet['channelTitle'])
-                fe.pubDate(snippet['publishedAt'])
+                fe.author(name=snippet.channelTitle)
+                fe_podcast.itunes_author(snippet.channelTitle)
+                fe.pubDate(snippet.publishedAt)
                 fe.link(
                     href=f'https://www.youtube.com/watch?v={current_video}',
-                    title=snippet['title']
+                    title=snippet.title
                 )
-                description = snippet['description']
+                description = snippet.description
                 if video_liveStreamingDetails:
                     stream_infos = []
-                    if video_liveStreamingDetails.get('scheduledStartTime', None):
-                        stream_infos.append(f"Live stream scheduled to start at {video_liveStreamingDetails['scheduledStartTime']}")
-                    if video_liveStreamingDetails.get('actualStartTime', None):
-                        stream_infos.append(f"Live stream started at {video_liveStreamingDetails['actualStartTime']}")
-                    if video_liveStreamingDetails.get('actualEndTime', None):
-                        stream_infos.append(f"Live stream ended at {video_liveStreamingDetails['actualEndTime']}")
+                    if video_liveStreamingDetails.scheduledStartTime:
+                        stream_infos.append(f"Live stream scheduled to start at {video_liveStreamingDetails.scheduledStartTime}")
+                    if video_liveStreamingDetails.actualStartTime:
+                        stream_infos.append(f"Live stream started at {video_liveStreamingDetails.actualStartTime}")
+                    if video_liveStreamingDetails.actualEndTime:
+                        stream_infos.append(f"Live stream ended at {video_liveStreamingDetails.actualEndTime}")
                     if stream_infos:
                         description = f"{description}\n\nLive stream information:\n" + "\n".join(stream_infos)
 
@@ -247,8 +247,9 @@ class BasePlaylistFeedHandler(web.RequestHandler):
                 fe_podcast.itunes_summary(description)
                 fe.description(description)
 
-                if video_contentDetails and video_contentDetails.get('duration', None):
-                    duration:datetime.timedelta = isodate.parse_duration(video_contentDetails['duration'])
+                duration = video_contentDetails and video_contentDetails.get('duration', None) or None
+                if duration is not None:
+                    duration:datetime.timedelta = isodate.parse_duration(duration)
                     fe_podcast.itunes_duration(int(duration.total_seconds()))
             
 
@@ -271,7 +272,7 @@ class BasePlaylistFeedHandler(web.RequestHandler):
             None
         """
         for item in items:
-            item_file:CacheItem = cache_manager.get(youtube.youtube.AUDIO_FILES_CACHE_NAME, item['snippet']['resourceId']['videoId'])
+            item_file:CacheItem = cache_manager.get(youtube.youtube.AUDIO_FILES_CACHE_NAME, item.snippet.resourceId.videoId)
             if item_file is None:
                 continue
-            item_file.name = item['snippet']['title']
+            item_file.name = item.snippet.title

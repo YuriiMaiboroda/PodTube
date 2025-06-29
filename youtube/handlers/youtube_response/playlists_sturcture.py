@@ -1,55 +1,55 @@
-from typing import TypedDict
+from pydantic import BaseModel
 
 from youtube.handlers.youtube_response.common_structure import YoutubePageInfo, YoutubeLocalized, YoutubeThumbnail
 
-class YoutubePlaylistSnippet(TypedDict):
+class YoutubePlaylistSnippet(BaseModel):
     """
-    A TypedDict representing the snippet of a YouTube playlist.
+    Representing the snippet of a YouTube playlist.
     """
-    publishedAt: str | None
-    channelId: str | None
-    title: str | None
-    description: str | None
-    thumbnails: dict[str, YoutubeThumbnail] | None
-    channelTitle: str | None
-    defaultLanguage: str | None
-    localized: YoutubeLocalized | None
+    publishedAt: str | None = None
+    channelId: str | None = None
+    title: str | None = None
+    description: str | None = None
+    thumbnails: dict[str, YoutubeThumbnail] | None = None
+    channelTitle: str | None = None
+    defaultLanguage: str | None = None
+    localized: YoutubeLocalized | None = None
 
-class YoutubePlaylistStatus(TypedDict):
+class YoutubePlaylistStatus(BaseModel):
     """
-    A TypedDict representing the status of a YouTube playlist.
+    Representing the status of a YouTube playlist.
     """
-    privacyStatus: str | None
-    podcastStatus: str | None
+    privacyStatus: str | None = None
+    podcastStatus: str | None = None
 
-class YoutubePlaylistContentDetails(TypedDict):
+class YoutubePlaylistContentDetails(BaseModel):
     """
-    A TypedDict representing the content details of a YouTube playlist.
+    Representing the content details of a YouTube playlist.
     """
-    itemCount: int | None
+    itemCount: int | None = None
 
-class YoutubePlaylistPlayer(TypedDict):
+class YoutubePlaylistPlayer(BaseModel):
     """
-    A TypedDict representing the player details of a YouTube playlist.
+    Representing the player details of a YouTube playlist.
     """
-    embedHtml: str | None
+    embedHtml: str | None = None
 
-class YoutubePlaylistsResponseItem(TypedDict):
+class YoutubePlaylistsResponseItem(BaseModel):
     """
-    A TypedDict representing a single item in the YouTube playlists response.
+    Representing a single item in the YouTube playlists response.
     """
-    id: str | None
-    snippet: YoutubePlaylistSnippet | None
-    status: YoutubePlaylistStatus | None
-    contentDetails: YoutubePlaylistContentDetails | None
-    player: YoutubePlaylistPlayer | None
+    id: str | None = None
+    snippet: YoutubePlaylistSnippet | None = None
+    status: YoutubePlaylistStatus | None = None
+    contentDetails: YoutubePlaylistContentDetails | None = None
+    player: YoutubePlaylistPlayer | None = None
     localizations: dict[str, YoutubeLocalized] | None 
 
-class YoutubePlaylistsResponse(TypedDict):
+class YoutubePlaylistsResponse(BaseModel):
     """
-    A TypedDict representing the response structure for YouTube playlist.
+    Representing the response structure for YouTube playlist.
     """
-    nextPageToken: str | None
-    prevPageToken: str | None
-    pageInfo: YoutubePageInfo | None
-    items: list[YoutubePlaylistsResponseItem] | None
+    nextPageToken: str | None = None
+    prevPageToken: str | None = None
+    pageInfo: YoutubePageInfo | None = None
+    items: list[YoutubePlaylistsResponseItem] | None = None

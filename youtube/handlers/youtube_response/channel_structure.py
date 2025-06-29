@@ -1,77 +1,77 @@
-from typing import TypedDict
+from pydantic import BaseModel
 
 from youtube.handlers.youtube_response.common_structure import YoutubeThumbnail, YoutubeLocalized
 
-class YoutubeChannelItemSnippet(TypedDict):
+class YoutubeChannelItemSnippet(BaseModel):
     """
-    A TypedDict representing the snippet of a YouTube channel item.
+    Representing the snippet of a YouTube channel item.
     """
-    title: str | None
-    description: str | None
-    customUrl: str | None
-    publishedAt: str | None
-    thumbnails: dict[str, YoutubeThumbnail] | None
-    defaultLanguage: str | None
-    localized: YoutubeLocalized | None
-    country: str | None
+    title: str | None = None
+    description: str | None = None
+    customUrl: str | None = None
+    publishedAt: str | None = None
+    thumbnails: dict[str, YoutubeThumbnail] | None = None
+    defaultLanguage: str | None = None
+    localized: YoutubeLocalized | None = None
+    country: str | None = None
 
 
-class YoutubeChannelItemContentDetailsRelatedPlaylists(TypedDict):
+class YoutubeChannelItemContentDetailsRelatedPlaylists(BaseModel):
     """
-    A TypedDict representing related playlists in the content details of a YouTube channel item.
+    Representing related playlists in the content details of a YouTube channel item.
     """
-    uploads: str | None
-    likes: str | None
+    uploads: str | None = None
+    likes: str | None = None
 
 
-class YoutubeChannelItemContentDetails(TypedDict):
+class YoutubeChannelItemContentDetails(BaseModel):
     """
-    A TypedDict representing the content details of a YouTube channel item.
+    Representing the content details of a YouTube channel item.
     """
-    relatedPlaylists: YoutubeChannelItemContentDetailsRelatedPlaylists | None
+    relatedPlaylists: YoutubeChannelItemContentDetailsRelatedPlaylists | None = None
 
 
-class YoutubeChannelItemTopicDetails(TypedDict):
+class YoutubeChannelItemTopicDetails(BaseModel):
     """
-    A TypedDict representing topic details of a YouTube channel item.
+    Representing topic details of a YouTube channel item.
     """
-    topicCategories: list[str] | None
+    topicCategories: list[str] | None = None
 
 
-class YoutubeChannelItemStatus(TypedDict):
+class YoutubeChannelItemStatus(BaseModel):
     """
-    A TypedDict representing the status of a YouTube channel item.
+    Representing the status of a YouTube channel item.
     """
-    privacyStatus: str | None
-    isLinked: bool | None
-    longUploadsStatus: str | None
-    madeForKids: bool | None
-    selfDeclaredMadeForKids: bool | None
+    privacyStatus: str | None = None
+    isLinked: bool | None = None
+    longUploadsStatus: str | None = None
+    madeForKids: bool | None = None
+    selfDeclaredMadeForKids: bool | None = None
 
 
-class YoutubeChannelItemContentOwnerDetails(TypedDict):
+class YoutubeChannelItemContentOwnerDetails(BaseModel):
     """
-    A TypedDict representing content owner details of a YouTube channel item.
+    Representing content owner details of a YouTube channel item.
     """
-    contentOwner: str | None
-    timeLinked: str | None
+    contentOwner: str | None = None
+    timeLinked: str | None = None
 
 
-class YoutubeChannelItem(TypedDict):
+class YoutubeChannelItem(BaseModel):
     """
-    A TypedDict representing a YouTube channel item.
+    Representing a YouTube channel item.
     """
-    id: str | None
-    snippet: YoutubeChannelItemSnippet | None
-    contentDetails: YoutubeChannelItemContentDetails | None
-    topicDetails: YoutubeChannelItemTopicDetails | None
-    status: YoutubeChannelItemStatus | None
-    contentOwnerDetails: YoutubeChannelItemContentOwnerDetails | None
-    localizations: dict[str, YoutubeLocalized] | None
+    id: str | None = None
+    snippet: YoutubeChannelItemSnippet | None = None
+    contentDetails: YoutubeChannelItemContentDetails | None = None
+    topicDetails: YoutubeChannelItemTopicDetails | None = None
+    status: YoutubeChannelItemStatus | None = None
+    contentOwnerDetails: YoutubeChannelItemContentOwnerDetails | None = None
+    localizations: dict[str, YoutubeLocalized] | None = None
 
 
-class YoutubeChannelResponseStructure(TypedDict):
+class YoutubeChannelResponseStructure(BaseModel):
     """
-    A TypedDict representing the structure of a YouTube channel response.
+    Representing the structure of a YouTube channel response.
     """
     items: list[YoutubeChannelItem]

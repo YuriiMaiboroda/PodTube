@@ -56,7 +56,7 @@ class PlaylistHandler(BasePlaylistFeedHandler):
 
         response:YoutubePlaylistsResponse = request.json()
         #logger.debug(f'{response=}', playlist)
-        snippet = response['items'][0]['snippet']
+        snippet = response.items[0].snippet
 
         icon_url = None
         title = None
@@ -68,7 +68,7 @@ class PlaylistHandler(BasePlaylistFeedHandler):
             payload = {
                 'part': 'snippet',
                 'maxResults': 1,
-                'id': snippet['channelId'],
+                'id': snippet.channelId,
                 'key': youtube.config_utils.KEY
             }
             request = await ioloop.IOLoop.current().run_in_executor(
@@ -83,21 +83,21 @@ class PlaylistHandler(BasePlaylistFeedHandler):
                 return
 
             response:YoutubeChannelResponseStructure = request.json()
-            channel_data = response['items'][0]['snippet']
+            channel_data = response.items[0].snippet
             icon_key = max(
-                channel_data['thumbnails'],
-                key=lambda x: channel_data['thumbnails'][x]['width']
+                channel_data.thumbnails,
+                key=lambda x: channel_data.thumbnails[x].width
             )
-            icon_url = channel_data['thumbnails'][icon_key]['url']
-            if channel_data.get('title', None):
-                title = channel_data['title']
-            if channel_data.get('description', None):
-                description = channel_data['description']
-            if channel_data.get('defaultLanguage', None):
-                language = channel_data['defaultLanguage']
+            icon_url = channel_data.thumbnails[icon_key].url
+            if channel_data.title:
+                title = channel_data.title
+            if channel_data.description:
+                description = channel_data.description
+            if channel_data.defaultLanguage:
+                language = channel_data.defaultLanguage
 
-        channel_title = snippet['channelTitle']
-        playlist_title = f"{channel_title}: {snippet['title']}"
+        channel_title = snippet.channelTitle
+        playlist_title = f"{channel_title}: {snippet.title}"
 
         logger.info(f'Playlist: {playlist} ({playlist_title})', playlist)
         if not title:
@@ -106,10 +106,10 @@ class PlaylistHandler(BasePlaylistFeedHandler):
             description = snippet.get('description', '') or ' '
         if not icon_url:
             icon_type = max(
-                snippet['thumbnails'],
-                key=lambda x: snippet['thumbnails'][x]['width']
+                snippet.thumbnails,
+                key=lambda x: snippet.thumbnails[x].width
             )
-            icon_url = snippet['thumbnails'][icon_type]['url'] if icon_type else ""
+            icon_url = snippet.thumbnails[icon_type].url if icon_type else ""
 
         if not language:
             language = snippet.get('defaultLanguage', 'en-US')
