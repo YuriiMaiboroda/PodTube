@@ -443,13 +443,9 @@ def download_youtube_audio(video: str):
         'extractor_args': {
             'youtube': {
                 'lang': ['uk'],
-                'player_skip': ['webpage'],
-                # 'bypass_native_jsi': True,
-                # 'deno_no_jitless': True,
             }
         },
-        'extractor_retries': 1,
-        'mark_watched': True,
+        'extractor_retries': 1
     })
 
     # This setup allows capturing logs from external tools (e.g. ffmpeg)
@@ -458,7 +454,7 @@ def download_youtube_audio(video: str):
         info = ydl.extract_info(yturl, download=False, process=False)
         if (info.get('live_status', None) in ['is_live', 'is_upcoming', 'is_premiere']):
             raise PodtubeYoutubeError(f'Video is Live Stream or Premiere: {video}')
-
+        ydl.params['mark_watched'] = youtube.config_utils.MARK_WATCHED
         ydl.download([yturl])
 
     logger.debug('Successfully downloaded audio', video)

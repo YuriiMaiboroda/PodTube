@@ -14,6 +14,7 @@ USE_OAUTH = False
 COOKIES_FILE_PATH = False
 AUDIO_DIR = None
 HL = None
+MARK_WATCHED = None
 
 def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str, default_value = None):
     """
@@ -32,7 +33,7 @@ def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str
 
 
 def init_config(conf):
-    global KEY, CLEANUP_PERIOD, CONVERT_VIDEO_PERIOD, AUDIO_EXPIRATION_TIME, PLAYLIST_EXPIRATION_TIME, HTTP_PROXY, HTTPS_PROXY, PROXIES, USE_OAUTH, COOKIES_FILE_PATH, AUDIO_DIR, HL
+    global KEY, CLEANUP_PERIOD, CONVERT_VIDEO_PERIOD, AUDIO_EXPIRATION_TIME, PLAYLIST_EXPIRATION_TIME, HTTP_PROXY, HTTPS_PROXY, PROXIES, USE_OAUTH, COOKIES_FILE_PATH, AUDIO_DIR, HL, MARK_WATCHED
     KEY                      = str(get_env_or_config_option(conf, "YT_API_KEY"                  , "yt_api_key"                  , default_value=None))
     HTTP_PROXY               =     get_env_or_config_option(conf, "YT_HTTP_PROXY"               , "yt_http_proxy"               , default_value=None)
     HTTPS_PROXY              =     get_env_or_config_option(conf, "YT_HTTPS_PROXY"              , "yt_https_proxy"              , default_value=None)
@@ -43,9 +44,11 @@ def init_config(conf):
     USE_OAUTH                =     get_env_or_config_option(conf, "YT_USE_OAUTH"                , "yt_use_oauth"                , default_value=False)
     COOKIES_FILE_PATH        = str(get_env_or_config_option(conf, "YT_COOKIES_FILE_PATH"        , "yt_cookies_file_path"        , default_value="__cache__/www.youtube.com_cookies.txt"))
     AUDIO_DIR                = str(get_env_or_config_option(conf, "YT_AUDIO_DIR"                , "yt_audio_dir"                , default_value="./youtube/audio"))
-    HL               = str(get_env_or_config_option(conf, "YT_HL"                       , "yt_hl"                       , default_value="en"))
+    HL                       = str(get_env_or_config_option(conf, "YT_HL"                       , "yt_hl"                       , default_value="en"))
+    MARK_WATCHED             =     get_env_or_config_option(conf, "YT_MARK_WATCHED"             , "yt_mark_watched"             , default_value=True)
 
     USE_OAUTH = utils.convert_to_bool(USE_OAUTH)
+    MARK_WATCHED = utils.convert_to_bool(MARK_WATCHED)
 
     if any(proxy is not None for proxy in (HTTP_PROXY, HTTPS_PROXY)):
         PROXIES = {}
