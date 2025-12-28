@@ -35,7 +35,7 @@ class BasePlaylistFeedHandler(BaseYoutubeHandler):
         super().initialize(logger)
         self.audio_handler_path = audio_handler_path
 
-    async def head(self, **kwargs):
+    async def head(self, *args, **kwargs):
         """
         A coroutine function that sets the header for the given playlist.
 
@@ -60,11 +60,11 @@ class BasePlaylistFeedHandler(BaseYoutubeHandler):
             self.finish()
             return True
         return False
-    
+
     def save_feed_to_cache(self, item_name: str, name:str, feed: str):
         """
         Saves the generated feed to the cache.
-        
+
         Args:
             item_name (str): The name of the item to save in the cache.
             feed (str): The generated feed content to be cached.
@@ -125,11 +125,6 @@ class BasePlaylistFeedHandler(BaseYoutubeHandler):
             self.logger.error(f"Failed parse max_count to int: {max_items}", log_tag)
             max_items = 1
 
-        self.youtubeapi.get_playlist_items(
-            playlist_id=playlist,
-            parts=['snippet'],
-
-        )
         isFirstRequest = True
         playlist_items_response:pyyoutube.PlaylistItemListResponse = pyyoutube.PlaylistItemListResponse()
 
@@ -160,32 +155,36 @@ class BasePlaylistFeedHandler(BaseYoutubeHandler):
                 if playlist_items_response.items is None:
                     playlist_items_response.items = []
 
-            try:
-                videos_response:pyyoutube.VideoListResponse = await ioloop.IOLoop.current().run_in_executor(
-                    None,
-                    lambda: self.youtubeapi.get_video_by_id(
-                        video_id=','.join(item.snippet.resourceId.videoId for item in playlist_items_response.items),
-                        parts=['contentDetails', 'liveStreamingDetails', 'status'],
-                        hl=self.hl
-                    )
-                )
-            except pyyoutube.PyYouTubeException as e:
-                self.logger.error(f'Error retrieving video details: {e}', log_tag)
-
             all_video_contentDetails:dict[str, pyyoutube.VideoContentDetails] = {}
             all_video_status:dict[str, pyyoutube.VideoStatus] = {}
             all_video_liveStreamingDetails:dict[str, pyyoutube.VideoLiveStreamingDetails] = {}
 
-            if videos_response:
-                for item in videos_response.items:
-                    if item.id is None:
-                        continue
-                    if item.contentDetails is not None:
-                        all_video_contentDetails[item.id] = item.contentDetails
-                    if item.status is not None:
-                        all_video_status[item.id] = item.status
-                    if item.liveStreamingDetails is not None:
-                        all_video_liveStreamingDetails[item.id] = item.liveStreamingDetails
+            batch_size=50
+            for i in range(0, len(playlist_items_response.items), batch_size):
+                items = playlist_items_response.items[i:i+batch_size]
+                videos_response:pyyoutube.VideoListResponse = None
+                try:
+                    videos_response = await ioloop.IOLoop.current().run_in_executor(
+                        None,
+                        lambda: self.youtubeapi.get_video_by_id(
+                            video_id=','.join(item.snippet.resourceId.videoId for item in items),
+                            parts=['contentDetails', 'liveStreamingDetails', 'status'],
+                            hl=self.hl
+                        )
+                    )
+                except pyyoutube.PyYouTubeException as e:
+                    self.logger.error(f'Error retrieving video details: {e}', log_tag)
+
+                if videos_response:
+                    for item in videos_response.items:
+                        if item.id is None:
+                            continue
+                        if item.contentDetails is not None:
+                            all_video_contentDetails[item.id] = item.contentDetails
+                        if item.status is not None:
+                            all_video_status[item.id] = item.status
+                        if item.liveStreamingDetails is not None:
+                            all_video_liveStreamingDetails[item.id] = item.liveStreamingDetails
 
             self.update_file_names(playlist_items_response.items)
 
@@ -249,19 +248,18 @@ class BasePlaylistFeedHandler(BaseYoutubeHandler):
                 duration = video_contentDetails.get_video_seconds_duration() if video_contentDetails else None
                 if duration is not None:
                     fe_podcast.itunes_duration(duration)
-            
 
         self.logger.debug(f"Got {items_count} videos", log_tag)
 
         feed = fg.rss_str()
-        
+
         self.save_feed_to_cache(cache_id, title, feed)
 
         return feed
 
     def getDateTimeStingInLocalTimezone(self, datetime:str) -> str:
-        return pyyoutube.DatetimeTimeMixin.string_to_datetime(datetime).astimezone().replace(tzinfo=None).isoformat(' ', 'seconds')
-    
+        return pyyoutube.DatetimeTimeMixin.string_to_datetime(datetime).astimezone().replace(tzinfo=None).isoformat(' ', 'seconds').replace(":", ".")
+
     def update_file_names(self, items:list[pyyoutube.PlaylistItem]) -> None:
         """
         Updates the file names of the items in the playlist.
@@ -284,7 +282,7 @@ class BasePlaylistFeedHandler(BaseYoutubeHandler):
 
         Args:
             thumbnails (pyyoutube.Thumbnails): The thumbnails object containing various resolutions.
-        
+
         Returns:
             pyyoutube.Thumbnail: The thumbnail with the highest resolution available.
         """

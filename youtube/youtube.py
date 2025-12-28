@@ -360,7 +360,7 @@ async def convert_video_async(video):
                     break
 
             if errorType:
-                logger.error(f'Error converting file: {errorMessage}', video)
+                logger.warning(f'Error converting file: {errorMessage}', video)
                 video_link_cache:VideoLinkCacheItem = cache_manager.get_or_add(
                     VIEDO_LINKS_CACHE_NAME,
                     video,
