@@ -5,9 +5,10 @@ from feedgen.feed import FeedGenerator
 from feedgen.ext.podcast import PodcastExtension
 from feedgen.ext.podcast_entry import PodcastEntryExtension
 from tornado import ioloop
+from urllib.parse import urlencode, urlunparse
 
 from youtube.cache import CacheItem
-from youtube.handlers.base_youtube_handler import BaseYoutubeHandler
+from youtube.handlers.base_youtube_handler import BaseYoutubeRssHandler
 from youtube.logging_utils import TaggedLogger
 import youtube.config_utils
 import youtube.youtube
@@ -30,7 +31,7 @@ class FeedCacheItem(CacheItem):
         super().__init__(expire or (datetime.datetime.now() + datetime.timedelta(seconds=youtube.config_utils.PLAYLIST_EXPIRATION_TIME)), name)
         self.feed = feed
 
-class BasePlaylistFeedHandler(BaseYoutubeHandler):
+class BasePlaylistFeedHandler(BaseYoutubeRssHandler):
     def initialize(self, logger:TaggedLogger, audio_handler_path:str):
         super().initialize(logger)
         self.audio_handler_path = audio_handler_path
@@ -106,7 +107,7 @@ class BasePlaylistFeedHandler(BaseYoutubeHandler):
             uri=url
         )
         fg_podcast.itunes_author(author)
-        fg.link( 
+        fg.link(
             href=url,
             rel='self'
         )
@@ -216,7 +217,26 @@ class BasePlaylistFeedHandler(BaseYoutubeHandler):
                 thumbnail:pyyoutube.models.common.Thumbnail = self.getMaxResolutionThumbnail(snippet.thumbnails)
                 fe_podcast.itunes_image(thumbnail.url if thumbnail else None)
                 fe.updated(snippet.publishedAt)
-                final_url = f'{self.request.protocol}://{self.request.host}{self.audio_handler_path}{current_video}'
+
+                query = {}
+                if self.hl is not None:
+                    query['hl'] = self.hl
+                if self.mark_watched is not None:
+                    query['mark_watched'] = self.mark_watched
+                if self.start_time is not None:
+                    query['start'] = self.start_time
+                if self.end_time is not None:
+                    query['end'] = self.end_time
+                final_url = urlunparse((
+                    self.request.protocol,
+                    self.request.host,
+                    f'{self.audio_handler_path}{current_video}',
+                    '',
+                    urlencode(query),
+                    ''
+                ))
+
+                # final_url = f'{self.request.protocol}://{self.request.host}{self.audio_handler_path}{current_video}'
                 fe.enclosure(
                     url=final_url,
                     type="audio/mpeg"
@@ -241,7 +261,7 @@ class BasePlaylistFeedHandler(BaseYoutubeHandler):
                     if stream_infos:
                         description = f"{description}\n\nLive stream information:\n" + "\n".join(stream_infos)
 
-                description = description + f'\n\n{final_url}'
+                description = description + f'\n\n{final_url}\n{self.getDateTimeStingInLocalTimezone(snippet.publishedAt)}'
                 fe_podcast.itunes_summary(description)
                 fe.description(description)
 

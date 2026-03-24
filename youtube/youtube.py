@@ -127,7 +127,7 @@ class ConversionQueueItem:
     Represents an item in the conversion queue.
     Contains the video ID and its conversion status.
     """
-    def __init__(self, video_id: str, added: datetime.datetime):
+    def __init__(self, video_id: str, added: datetime.datetime, additional_data):
         """
         Initializes a ConversionQueueItem with a video ID and its conversion status.
         
@@ -138,6 +138,7 @@ class ConversionQueueItem:
         self.video_id = video_id
         self.added = added
         self.status = False
+        self.additional_data = additional_data
 
 class ErrorPattern:
     def __init__(self, pattern:re.Pattern[str], unavailable_type: UnavailableType, message: str):
@@ -250,7 +251,7 @@ def init(conf: ConfigParser):
             AudioFileCacheItem(file)
         )
 
-def add_video_to_conversion_queue(video: str) -> bool:
+def add_video_to_conversion_queue(video: str, additional_data) -> bool:
     """
     Adds a video to the conversion queue if it is not already present.
 
@@ -259,7 +260,7 @@ def add_video_to_conversion_queue(video: str) -> bool:
     """
     global conversion_queue
     if video not in conversion_queue:
-        conversion_queue[video] = ConversionQueueItem(video, datetime.datetime.now())
+        conversion_queue[video] = ConversionQueueItem(video, datetime.datetime.now(), additional_data)
         # logger.info(f'Added video {video} to conversion queue', 'convert_video')
         return True
     else:
@@ -407,8 +408,9 @@ def download_youtube_audio(video: str):
     Args:
         video (str): Youtube video's key.
     """
+    video_queue_item = conversion_queue[video]
     yturl = get_youtube_url(video)
-    logger.debug(f"Full URL: {yturl}", video)
+    additional_data = video_queue_item.additional_data or {}
 
     # audio_file = f'{AUDIO_DIR}/{video}.mp3'
     # audio_file_temp = audio_file + '.temp'
@@ -421,7 +423,7 @@ def download_youtube_audio(video: str):
         status = info['status']
         logger.debug(f'Downloading audio. Status {status}. {info=}\n\n', video)
 
-    ydl = yt_dlp.YoutubeDL({
+    ytdlp_params = {
         'paths': {
             'home': f'{youtube.config_utils.AUDIO_DIR}',
             'temp': f'tmp'
@@ -442,11 +444,25 @@ def download_youtube_audio(video: str):
         'cookiefile': youtube.config_utils.COOKIES_FILE_PATH,
         'extractor_args': {
             'youtube': {
-                'lang': ['uk'],
+                'lang': [(video_queue_item.additional_data or {}).get('hl', youtube.config_utils.HL)],
             }
         },
-        'extractor_retries': 1
-    })
+        'extractor_retries': 1,
+    }
+
+    start_time = additional_data.get("start_time", None)
+    end_time = additional_data.get("end_time", None)
+    if start_time is not None or end_time is not None:
+        start_time = float(start_time) if start_time is not None else 0
+        end_time = float(end_time) if end_time is not None else float("inf")
+        download_ranges = yt_dlp.download_range_func(
+            [],
+            [[start_time, end_time]]
+        )
+
+        ytdlp_params['download_ranges'] = download_ranges
+
+    ydl = yt_dlp.YoutubeDL(ytdlp_params)
 
     # This setup allows capturing logs from external tools (e.g. ffmpeg)
     # that write directly to sys.stderr or sys.stdout, and redirecting them to the Python logger.
@@ -454,7 +470,8 @@ def download_youtube_audio(video: str):
         info = ydl.extract_info(yturl, download=False, process=False)
         if (info.get('live_status', None) in ['is_live', 'is_upcoming', 'is_premiere']):
             raise PodtubeYoutubeError(f'Video is Live Stream or Premiere: {video}')
-        ydl.params['mark_watched'] = youtube.config_utils.MARK_WATCHED
+        ydl.params['mark_watched'] = (video_queue_item.additional_data or {}).get('mark_watched', youtube.config_utils.MARK_WATCHED)
+
         ydl.download([yturl])
 
     logger.debug('Successfully downloaded audio', video)

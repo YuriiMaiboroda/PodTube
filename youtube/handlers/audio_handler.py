@@ -1,5 +1,6 @@
 from youtube.logging_utils import TaggedLogger
 import youtube.youtube
+from youtube.handlers.base_youtube_handler import BaseYoutubeHandler
 
 from tornado import gen, httputil, iostream, web
 
@@ -8,12 +9,16 @@ from pathlib import Path
 
 logger = TaggedLogger(__name__)
 
-class AudioHandler(web.RequestHandler):
+class AudioHandler(BaseYoutubeHandler):
     def initialize(self):
         """
         Initialize the object.
         """
         self.disconnected = False
+
+    def prepare(self):
+        super().prepare()
+        self.set_header("Content-Type", "audio/mpeg")
 
     async def head(self, audio):
         """
@@ -69,7 +74,11 @@ class AudioHandler(web.RequestHandler):
             return
         mp3_file = youtube.youtube.get_audio_file_path(audio)
         if not os.path.exists(mp3_file):
-            youtube.youtube.add_video_to_conversion_queue(audio)
+            additional_data = self.create_additional_data(audio)
+            youtube.youtube.add_video_to_conversion_queue(
+                audio,
+                additional_data
+            )
             while youtube.youtube.is_video_in_conversion_queue(audio):
                 await gen.sleep(0.5)
                 if self.disconnected:
@@ -186,3 +195,18 @@ class AudioHandler(web.RequestHandler):
         """
         logger.warning(f'Audio: User quit during transcoding ({self.request.remote_ip})', self.request.path)
         self.disconnected = True
+
+    def create_additional_data(self, audio):
+        additional_fields = (
+            ("hl", self.hl),
+            ("mark_watched", self.mark_watched),
+            ("start_time", self.start_time),
+            ("end_time", self.end_time),
+        )
+
+        additional_data = {}
+        for key, value in additional_fields:
+            if value is not None:
+                additional_data[key] = value
+
+        return additional_data
