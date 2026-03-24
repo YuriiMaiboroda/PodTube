@@ -40,7 +40,7 @@ def init_config(conf):
     CONVERT_VIDEO_PERIOD     = int(get_env_or_config_option(conf, "YT_CONVERT_VIDEO_PERIOD"     , "yt_convert_video_period"     , default_value=1)) # 1 second
     AUDIO_EXPIRATION_TIME    = int(get_env_or_config_option(conf, "YT_AUDIO_EXPIRATION_TIME"    , "yt_audio_expiration_time"    , default_value=3*24*60*60)) # 3 days
     PLAYLIST_EXPIRATION_TIME = int(get_env_or_config_option(conf, "YT_PLAYLIST_EXPIRATION_TIME" , "yt_playlist_expiration_time" , default_value=30*60)) # 30 minutes
-    COOKIES_FILE_PATH        = str(get_env_or_config_option(conf, "YT_COOKIES_FILE_PATH"        , "yt_cookies_file_path"        , default_value="__cache__/www.youtube.com_cookies.txt"))
+    COOKIES_FILE_PATH        = str(get_env_or_config_option(conf, "YT_COOKIES_FILE_PATH"        , "yt_cookies_file_path"        , default_value=None))
     AUDIO_DIR                = str(get_env_or_config_option(conf, "YT_AUDIO_DIR"                , "yt_audio_dir"                , default_value="./youtube/audio"))
     HL                       = str(get_env_or_config_option(conf, "YT_HL"                       , "yt_hl"                       , default_value="en"))
     MARK_WATCHED             =     get_env_or_config_option(conf, "YT_MARK_WATCHED"             , "yt_mark_watched"             , default_value=True)
