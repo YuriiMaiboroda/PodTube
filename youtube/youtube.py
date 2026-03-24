@@ -391,25 +391,25 @@ def _on_task_done(task:asyncio.Task):
         logger.error(f'Unhandled error in task: {e}', 'convert_video', e, logger.isEnabledFor(logging.DEBUG))
 
 class LoggerForYoutubeDL:
-    def __init__(self, videoId: str):
-        self.videoId = videoId
+    def __init__(self, log_tags):
+        self.log_tags = log_tags
 
     def debug(self, msg):
         # For compatibility with youtube-dl, both debug and info are passed into debug
         # You can distinguish them by the prefix '[debug] '
         if msg.startswith('[debug] '):
-            logger.debug(msg, self.videoId)
+            logger.debug(msg, self.log_tags)
         else:
             self.info(msg)
 
     def info(self, msg):
-        logger.info(msg, self.videoId)
+        logger.info(msg, self.log_tags)
 
     def warning(self, msg):
-        logger.warning(msg, self.videoId)
+        logger.warning(msg, self.log_tags)
 
     def error(self, msg):
-        logger.error(msg, self.videoId)
+        logger.error(msg, self.log_tags)
 
 def download_youtube_audio(video: str):
     """
@@ -418,8 +418,10 @@ def download_youtube_audio(video: str):
     Args:
         video (str): Youtube video's key.
     """
+    log_tags = [video]
     video_queue_item = conversion_queue[video]
     yturl = get_youtube_url(video)
+    logger.debug(f"Full URL: {yturl}", log_tags)
     additional_data = video_queue_item.additional_data or {}
 
     # audio_file = f'{AUDIO_DIR}/{video}.mp3'
@@ -427,11 +429,11 @@ def download_youtube_audio(video: str):
     # video_file = None
 
     Path(youtube.config_utils.AUDIO_DIR).mkdir(parents=True, exist_ok=True)
-    logger.debug('Start downloading audio stream', video)
+    logger.debug('Start downloading audio stream', log_tags)
 
     def progress_hook(info):
         status = info['status']
-        logger.debug(f'Downloading audio. Status {status}. {info=}\n\n', video)
+        logger.debug(f'Downloading audio. Status {status}. {info=}\n\n', log_tags)
 
     ytdlp_params = {
         'paths': {
@@ -448,7 +450,7 @@ def download_youtube_audio(video: str):
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
         }],
-        'logger': LoggerForYoutubeDL(video),
+        'logger': LoggerForYoutubeDL(log_tags),
         # 'progress_hooks': [progress_hook],
         'proxy': youtube.config_utils.HTTPS_PROXY,
         'cookiefile': youtube.config_utils.COOKIES_FILE_PATH,
@@ -480,11 +482,20 @@ def download_youtube_audio(video: str):
         info = ydl.extract_info(yturl, download=False, process=False)
         if (info.get('live_status', None) in ['is_live', 'is_upcoming', 'is_premiere']):
             raise PodtubeYoutubeError(f'Video is Live Stream or Premiere: {video}')
+
+        if logger.isEnabledFor(logging.DEBUG):
+            audio_name = info.get('title', None)
+            log_tags[:] = [
+                video,
+                info.get('title',''),
+                info.get('channel_id',''),
+                info.get('channel',''),
+            ]
         ydl.params['mark_watched'] = (video_queue_item.additional_data or {}).get('mark_watched', youtube.config_utils.MARK_WATCHED)
 
         ydl.download([yturl])
 
-    logger.debug('Successfully downloaded audio', video)
+    logger.debug('Successfully downloaded audio', log_tags)
 
     file_path = get_audio_file_path(video)
     cache_manager.set(
