@@ -2,5 +2,5 @@
 SCRIPTPATH=$(dirname "$(realpath "$0")")
 . $SCRIPTPATH/const-paths
 
-pip install --upgrade yt-dlp
-$DIRD/restart
+pip install --upgrade "yt-dlp[default]"
+# $DIRD/restart
