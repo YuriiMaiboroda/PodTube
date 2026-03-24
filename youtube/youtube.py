@@ -191,6 +191,16 @@ ERROR_PATTERNS:list[ErrorPattern] = [
     ErrorPattern(
         pattern=re.compile(
             r'\b' + r'\b|\b'.join([
+                r'HTTP Error 403',
+            ]) + r'\b',
+            re.IGNORECASE
+        ),
+        unavailable_type=UnavailableType.LOGIN,
+        message="HTTP Error 403: Forbidden"
+    ),
+    ErrorPattern(
+        pattern=re.compile(
+            r'\b' + r'\b|\b'.join([
                 r'вилучив',
             ]) + r'\b',
             re.IGNORECASE
