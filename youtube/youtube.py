@@ -474,12 +474,11 @@ def download_youtube_audio(video: str):
 
         ytdlp_params['download_ranges'] = download_ranges
 
-    ydl = yt_dlp.YoutubeDL(ytdlp_params)
 
     # This setup allows capturing logs from external tools (e.g. ffmpeg)
     # that write directly to sys.stderr or sys.stdout, and redirecting them to the Python logger.
     audio_name = None
-    with redirect_std_streams(logger):
+    with redirect_std_streams(logger), yt_dlp.YoutubeDL(ytdlp_params) as ydl:
         info = ydl.extract_info(yturl, download=False, process=False)
         if (info.get('live_status', None) in ['is_live', 'is_upcoming', 'is_premiere']):
             raise PodtubeYoutubeError(f'Video is Live Stream or Premiere: {video}')
