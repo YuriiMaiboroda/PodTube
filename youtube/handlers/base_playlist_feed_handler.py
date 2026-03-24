@@ -138,12 +138,11 @@ class BasePlaylistFeedHandler(BaseYoutubeRssHandler):
             try:
                 playlist_items_response = await ioloop.IOLoop.current().run_in_executor(
                     None,
-                    lambda: self.youtubeapi.get_playlist_items(
-                        playlist_id=playlist,
-                        parts=['snippet'],
-                        page_token=next_page,
-                        count=restItemsCount,
-                        limit=50
+                    lambda: self.youtube_client.playlistItems.list(
+                        parts = ['snippet'],
+                        playlist_id = playlist,
+                        max_results = min(restItemsCount or 50, 50),
+                        page_token = next_page,
                     )
                 )
             except pyyoutube.PyYouTubeException as e:
@@ -167,7 +166,7 @@ class BasePlaylistFeedHandler(BaseYoutubeRssHandler):
                 try:
                     videos_response = await ioloop.IOLoop.current().run_in_executor(
                         None,
-                        lambda: self.youtubeapi.get_video_by_id(
+                        lambda: self.youtube_client.videos.list(
                             video_id=','.join(item.snippet.resourceId.videoId for item in items),
                             parts=['contentDetails', 'liveStreamingDetails', 'status'],
                             hl=self.hl

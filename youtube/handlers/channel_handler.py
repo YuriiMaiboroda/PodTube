@@ -63,7 +63,7 @@ class ChannelHandler(BasePlaylistFeedHandler):
         try:
             channel_response:pyyoutube.ChannelListResponse = await ioloop.IOLoop.current().run_in_executor(
                 None,
-                lambda: self.youtubeapi.get_channel_info(
+                lambda: self.youtube_client.channels.list(
                     channel_id=channel_id,
                     for_handle=handle,
                     parts=['snippet', 'contentDetails', 'topicDetails'],

@@ -32,7 +32,7 @@ class PlaylistHandler(BasePlaylistFeedHandler):
         try:
             response:pyyoutube.PlaylistListResponse = await ioloop.IOLoop.current().run_in_executor(
                 None,
-                lambda: self.youtubeapi.get_playlist_by_id(
+                lambda: self.youtube_client.playlists.list(
                     playlist_id=playlist,
                     parts=['snippet', 'contentDetails'],
                     hl=self.hl,
@@ -54,7 +54,7 @@ class PlaylistHandler(BasePlaylistFeedHandler):
             try:
                 response:pyyoutube.ChannelListResponse = await ioloop.IOLoop.current().run_in_executor(
                     None,
-                    lambda: self.youtubeapi.get_channel_info(
+                    lambda: self.youtube_client.channels.list(
                         channel_id=snippet.channelId,
                         parts=['snippet'],
                         hl=self.hl,
