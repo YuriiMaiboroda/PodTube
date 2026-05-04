@@ -62,6 +62,9 @@ class AudioHandler(BaseYoutubeHandler):
                 case youtube.youtube.UnavailableType.PRIVATE:
                     self.set_status(403)
                     return True
+                case youtube.youtube.UnavailableType.INTERNAL_ERROR:
+                    self.set_status(500)
+                    return True
         return False
 
     async def get(self, audio):

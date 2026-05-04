@@ -28,6 +28,7 @@ class UnavailableType(Enum):
     LOGIN = 3
     REMOVED = 4
     PRIVATE = 5
+    INTERNAL_ERROR = 500
 
 class AudioFileCacheItem(CacheItem):
     def __init__(self, file_path:str, expire_duration:float = None):
@@ -360,25 +361,30 @@ async def convert_video_async(video):
         try:
             await ioloop.IOLoop.current().run_in_executor(None, download_youtube_audio, video)
             logger.info('Successfully downloaded', video)
-        except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError, PodtubeYoutubeError) as ex:
-            errorType = None
-            errorMessage = None
-            
-            for pattern in ERROR_PATTERNS:
-                if pattern.pattern.search(ex.msg):
-                    errorType = pattern.unavailable_type
-                    errorMessage = pattern.message
-                    break
+        except Exception as ex:
+            errorType = UnavailableType.INTERNAL_ERROR
+            errorMessage = str(ex) or "Internal error"
 
-            if errorType:
-                logger.warning(f'Error converting file: {errorMessage}', video)
-                video_link_cache:VideoLinkCacheItem = cache_manager.get_or_add(
-                    VIEDO_LINKS_CACHE_NAME,
-                    video,
-                    lambda: VideoLinkCacheItem(None, datetime.datetime.now() + datetime.timedelta(hours=1))
-                )
-                video_link_cache.unavailable_type = errorType
-            else:
+            if isinstance(ex, (
+                yt_dlp.utils.DownloadError,
+                yt_dlp.utils.ExtractorError,
+                PodtubeYoutubeError
+            )):
+                for pattern in ERROR_PATTERNS:
+                    if pattern.pattern.search(ex.msg):
+                        errorType = pattern.unavailable_type
+                        errorMessage = pattern.message
+                        break
+
+            logger.warning(f'Error converting file: {errorMessage}', video)
+            video_link_cache:VideoLinkCacheItem = cache_manager.get_or_add(
+                VIEDO_LINKS_CACHE_NAME,
+                video,
+                lambda: VideoLinkCacheItem(None, datetime.datetime.now() + datetime.timedelta(hours=1))
+            )
+            video_link_cache.unavailable_type = errorType
+
+            if errorType == UnavailableType.INTERNAL_ERROR:
                 raise
         finally:
             conversion_queue.pop(video, None)
