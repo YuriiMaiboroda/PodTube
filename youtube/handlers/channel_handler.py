@@ -75,6 +75,11 @@ class ChannelHandler(BasePlaylistFeedHandler):
             self.send_error(reason='Error retrieving channel information', status_code=404 if e.status_code == 404 else 500)
             return
 
+        if not channel_response.items:
+            logger.error(f'Channel not found', channel)
+            self.send_error(reason='Channel not found', status_code=404)
+            return
+
         logger.debug('Downloaded Channel Information', channel)
 
         channel_data = channel_response.items[0]

@@ -152,8 +152,9 @@ class BasePlaylistFeedHandler(BaseYoutubeRssHandler):
                     return None
 
                 self.logger.error(f'Playlist not found: {playlist}', log_tag)
-                if playlist_items_response.items is None:
-                    playlist_items_response.items = []
+
+            if playlist_items_response.items is None:
+                playlist_items_response.items = []
 
             all_video_contentDetails:dict[str, pyyoutube.VideoContentDetails] = {}
             all_video_status:dict[str, pyyoutube.VideoStatus] = {}
@@ -175,7 +176,7 @@ class BasePlaylistFeedHandler(BaseYoutubeRssHandler):
                 except pyyoutube.PyYouTubeException as e:
                     self.logger.error(f'Error retrieving video details: {e}', log_tag)
 
-                if videos_response:
+                if videos_response and videos_response.items:
                     for item in videos_response.items:
                         if item.id is None:
                             continue

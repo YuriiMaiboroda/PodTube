@@ -43,6 +43,11 @@ class PlaylistHandler(BasePlaylistFeedHandler):
             self.send_error(reason='Error retrieving playlist information', status_code=404 if e.status_code == 404 else 500)
             return
 
+        if not response.items:
+            logger.error(f'Playlist not found', playlist)
+            self.send_error(reason='Playlist not found', status_code=404)
+            return
+
         snippet:pyyoutube.PlaylistSnippet = response.items[0].snippet
 
         icon_url = None
@@ -63,6 +68,11 @@ class PlaylistHandler(BasePlaylistFeedHandler):
             except pyyoutube.PyYouTubeException as e:
                 logger.error(f'Error retrieving channel information: {e}', playlist)
                 self.send_error(reason='Error retrieving channel information', status_code=404 if e.status_code == 404 else 500)
+                return
+
+            if not response.items:
+                logger.error(f'Channel for playlist not found', [playlist, snippet.channelId])
+                self.send_error(reason='Channel for playlist not found', status_code=404)
                 return
 
             channel_data:pyyoutube.ChannelSnippet = response.items[0].snippet
