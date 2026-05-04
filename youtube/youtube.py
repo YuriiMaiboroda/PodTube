@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import yt_dlp
+import threading
 
 from configparser import ConfigParser
 from enum import Enum
@@ -397,8 +398,28 @@ def _on_task_done(task:asyncio.Task):
         logger.error(f'Unhandled error in task: {e}', 'convert_video', e, logger.isEnabledFor(logging.DEBUG))
 
 class LoggerForYoutubeDL:
-    def __init__(self, log_tags):
+    _progress_re = re.compile(
+        r"""
+        ^\s*(?:\[[^\]]*\]\s*)*          # optional [tags]
+        (?P<percent>\d{1,3}(?:\.\d+)?)%\s+of\s+
+        (?P<size>.+?)\s+at\s+
+        (?P<speed>.+?)\s+ETA\s+      # speed can contain spaces (e.g. "Unknown B/s")
+        (?P<eta>\S+)
+        """,
+        re.VERBOSE
+    )
+
+    def __init__(self, log_tags, progress_interval=1.0, progress_filter_enabled=True):
         self.log_tags = log_tags
+
+        self.progress_interval = progress_interval
+        self.progress_filter_enabled = progress_filter_enabled
+
+        self._progress_timer = None
+        self._pending_progress_msg = None
+        self._progress_lock = threading.RLock()
+
+        self._seen_100_percent = False
 
     def debug(self, msg):
         # For compatibility with youtube-dl, both debug and info are passed into debug
@@ -409,6 +430,9 @@ class LoggerForYoutubeDL:
             self.info(msg)
 
     def info(self, msg):
+        if self._handle_progress_message(msg):
+            return
+
         logger.info(msg, self.log_tags)
 
     def warning(self, msg):
@@ -416,6 +440,66 @@ class LoggerForYoutubeDL:
 
     def error(self, msg):
         logger.error(msg, self.log_tags)
+
+    def _handle_progress_message(self, msg):
+        if not self.progress_filter_enabled:
+            return False
+
+        match = self._progress_re.match(msg)
+        if not match:
+            return False
+
+        percent = float(match.group('percent'))
+
+        is_first_100_percent = percent >= 100.0 and not self._seen_100_percent
+
+        if is_first_100_percent:
+            self._seen_100_percent = True
+
+        with self._progress_lock:
+            self._pending_progress_msg = msg
+            if is_first_100_percent or self._progress_timer is None:
+                self.flush_progress(restart_timer=True)
+
+        return True
+
+    def flush_progress(self, restart_timer=False):
+        with self._progress_lock:
+            if self._progress_timer is not None:
+                self._progress_timer.cancel()
+                self._progress_timer = None
+
+            if self._pending_progress_msg is not None:
+                logger.info(self._pending_progress_msg, self.log_tags)
+                self._pending_progress_msg = None
+
+            if restart_timer:
+                self._start_progress_timer()
+
+    def _start_progress_timer(self):
+        with self._progress_lock:
+            self._progress_timer = threading.Timer(
+                self.progress_interval,
+                self._safe_timer_callback
+            )
+            self._progress_timer.daemon = True
+            self._progress_timer.start()
+
+    def _safe_timer_callback(self):
+        try:
+            self._on_progress_timer()
+        except Exception as ex:
+            if self._progress_timer is not None:
+                try:
+                    self._progress_timer.cancel()
+                finally:
+                    self._progress_timer = None
+            raise
+
+    def _on_progress_timer(self):
+        with self._progress_lock:
+            has_pending = self._pending_progress_msg is not None
+            self.flush_progress(restart_timer=has_pending)
 
 def download_youtube_audio(video: str):
     """
@@ -456,7 +540,7 @@ def download_youtube_audio(video: str):
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
         }],
-        'logger': LoggerForYoutubeDL(log_tags),
+        'logger': LoggerForYoutubeDL(log_tags, progress_interval=10),
         # 'progress_hooks': [progress_hook],
         'proxy': youtube.config_utils.HTTPS_PROXY,
         'cookiefile': youtube.config_utils.COOKIES_FILE_PATH,
