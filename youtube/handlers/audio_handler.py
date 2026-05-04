@@ -1,4 +1,4 @@
-from youtube.logging_utils import TaggedLogger
+from youtube.utils.logging_utils import TaggedLogger
 import youtube.youtube
 from youtube.handlers.base_youtube_handler import BaseYoutubeHandler
 

@@ -1,7 +1,7 @@
 import pyyoutube
 
 from youtube.handlers.base_playlist_feed_handler import BasePlaylistFeedHandler
-from youtube.logging_utils import TaggedLogger
+from youtube.utils.logging_utils import TaggedLogger
 
 from tornado import ioloop
 

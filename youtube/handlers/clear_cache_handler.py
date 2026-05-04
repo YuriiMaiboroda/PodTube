@@ -1,5 +1,5 @@
-from youtube.cache import CacheItem
-from youtube.logging_utils import TaggedLogger
+from youtube.utils.cache import CacheItem
+from youtube.utils.logging_utils import TaggedLogger
 import youtube.youtube
 
 from tornado import web

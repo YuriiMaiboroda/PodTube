@@ -1,5 +1,5 @@
-import youtube.config_utils
-from youtube.logging_utils import TaggedLogger
+import youtube.utils.config_utils
+from youtube.utils.logging_utils import TaggedLogger
 import utils
 
 import pyyoutube
@@ -27,9 +27,9 @@ class BaseYoutubeHandler(web.RequestHandler):
     def prepare(self):
         super().prepare()
         self.set_header('charset', 'utf-8')
-        self.youtube_client = pyyoutube.Client(api_key=youtube.config_utils.KEY, proxies=youtube.config_utils.PROXIES)
-        self.hl = self.get_argument('hl', youtube.config_utils.HL)
-        self.mark_watched = utils.convert_to_bool(self.get_argument('mark_watched', youtube.config_utils.MARK_WATCHED))
+        self.youtube_client = pyyoutube.Client(api_key=youtube.utils.config_utils.KEY, proxies=youtube.utils.config_utils.PROXIES)
+        self.hl = self.get_argument('hl', youtube.utils.config_utils.HL)
+        self.mark_watched = utils.convert_to_bool(self.get_argument('mark_watched', youtube.utils.config_utils.MARK_WATCHED))
         self.start_time = self.get_argument("start", None)
         self.end_time = self.get_argument("end", None)
 

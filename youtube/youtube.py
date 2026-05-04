@@ -17,9 +17,9 @@ from enum import Enum
 from pathlib import Path
 from tornado import ioloop
 from tornado.locks import Semaphore
-import youtube.config_utils
-from youtube.logging_utils import TaggedLogger, redirect_std_streams
-from youtube.cache import CacheManager, CacheItem
+import youtube.utils.config_utils
+from youtube.utils.logging_utils import TaggedLogger, redirect_std_streams
+from youtube.utils.cache import CacheManager, CacheItem
 
 __version__ = 'v2025.06.30.0'
 
@@ -40,7 +40,7 @@ class AudioFileCacheItem(CacheItem):
             expire (datetime.datetime, optional): The expiration time for the cache item. Defaults to None.
         """
         self.__file_path = file_path
-        self.__expire_duration = expire_duration or youtube.config_utils.AUDIO_EXPIRATION_TIME
+        self.__expire_duration = expire_duration or youtube.utils.config_utils.AUDIO_EXPIRATION_TIME
         super().__init__(expire=datetime.datetime.fromtimestamp(os.path.getctime(self.__file_path) + self.__expire_duration))
 
     @property
@@ -242,21 +242,21 @@ def init(conf: ConfigParser):
     Returns:
         None
     """
-    youtube.config_utils.init_config(conf)
+    youtube.utils.config_utils.init_config(conf)
 
     ioloop.PeriodicCallback(
         callback=cleanup,
-        callback_time=youtube.config_utils.CLEANUP_PERIOD * 1000
+        callback_time=youtube.utils.config_utils.CLEANUP_PERIOD * 1000
     ).start()
     ioloop.PeriodicCallback(
         callback=convert_videos,
-        callback_time=youtube.config_utils.CONVERT_VIDEO_PERIOD * 1000
+        callback_time=youtube.utils.config_utils.CONVERT_VIDEO_PERIOD * 1000
     ).start()
 
-    for file in glob.glob(f'{youtube.config_utils.AUDIO_DIR}/*.tmp'):
+    for file in glob.glob(f'{youtube.utils.config_utils.AUDIO_DIR}/*.tmp'):
         os.remove(file)
 
-    for file in glob.glob(f'{youtube.config_utils.AUDIO_DIR}/*mp3'):
+    for file in glob.glob(f'{youtube.utils.config_utils.AUDIO_DIR}/*mp3'):
         cache_manager.set(
             AUDIO_FILES_CACHE_NAME,
             os.path.splitext(os.path.basename(file))[0],
@@ -278,7 +278,7 @@ def add_video_to_conversion_queue(video: str, additional_data) -> bool:
     else:
         # logger.debug(f'Video {video} is already in the conversion queue', 'convert_video')
         return False
-    
+
 def remove_video_from_conversion_queue(video: str) -> bool:
     """
     Removes a video from the conversion queue if it exists.
@@ -297,7 +297,7 @@ def remove_video_from_conversion_queue(video: str) -> bool:
     else:
         # logger.debug(f'Video {video} is not in the conversion queue', 'convert_video')
         return False
-    
+
 def is_video_in_conversion_queue(video: str) -> bool:
     """
     Checks if a video is already in the conversion queue.
@@ -321,7 +321,7 @@ def get_audio_file_path(video: str) -> str:
     Returns:
         str: The path to the audio file.
     """
-    return f'{youtube.config_utils.AUDIO_DIR}/{video}.mp3'
+    return f'{youtube.utils.config_utils.AUDIO_DIR}/{video}.mp3'
 
 def cleanup():
     """
@@ -518,7 +518,7 @@ def download_youtube_audio(video: str):
     # audio_file_temp = audio_file + '.temp'
     # video_file = None
 
-    Path(youtube.config_utils.AUDIO_DIR).mkdir(parents=True, exist_ok=True)
+    Path(youtube.utils.config_utils.AUDIO_DIR).mkdir(parents=True, exist_ok=True)
     logger.debug('Start downloading audio stream', log_tags)
 
     def progress_hook(info):
@@ -527,7 +527,7 @@ def download_youtube_audio(video: str):
 
     ytdlp_params = {
         'paths': {
-            'home': f'{youtube.config_utils.AUDIO_DIR}',
+            'home': f'{youtube.utils.config_utils.AUDIO_DIR}',
             'temp': f'tmp'
         },
         'outtmpl': {
@@ -542,11 +542,11 @@ def download_youtube_audio(video: str):
         }],
         'logger': LoggerForYoutubeDL(log_tags, progress_interval=10),
         # 'progress_hooks': [progress_hook],
-        'proxy': youtube.config_utils.HTTPS_PROXY,
-        'cookiefile': youtube.config_utils.COOKIES_FILE_PATH,
+        'proxy': youtube.utils.config_utils.HTTPS_PROXY,
+        'cookiefile': youtube.utils.config_utils.COOKIES_FILE_PATH,
         'extractor_args': {
             'youtube': {
-                'lang': [(video_queue_item.additional_data or {}).get('hl', youtube.config_utils.HL)],
+                'lang': [(video_queue_item.additional_data or {}).get('hl', youtube.utils.config_utils.HL)],
             }
         },
         'extractor_retries': 1,
@@ -581,7 +581,7 @@ def download_youtube_audio(video: str):
                 info.get('channel_id',''),
                 info.get('channel',''),
             ]
-        ydl.params['mark_watched'] = (video_queue_item.additional_data or {}).get('mark_watched', youtube.config_utils.MARK_WATCHED)
+        ydl.params['mark_watched'] = (video_queue_item.additional_data or {}).get('mark_watched', youtube.utils.config_utils.MARK_WATCHED)
 
         ydl.download([yturl])
 

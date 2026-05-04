@@ -7,10 +7,10 @@ from feedgen.ext.podcast_entry import PodcastEntryExtension
 from tornado import ioloop
 from urllib.parse import urlencode, urlunparse
 
-from youtube.cache import CacheItem
+from youtube.utils.cache import CacheItem
 from youtube.handlers.base_youtube_handler import BaseYoutubeRssHandler
-from youtube.logging_utils import TaggedLogger
-import youtube.config_utils
+from youtube.utils.logging_utils import TaggedLogger
+import youtube.utils.config_utils
 import youtube.youtube
 
 FEED_CACHE_NAME = 'feeds'
@@ -28,7 +28,7 @@ class FeedCacheItem(CacheItem):
         :param title: A string representing the title of the channel.
         :param feed: A string representing the RSS feed of the channel.
         """
-        super().__init__(expire or (datetime.datetime.now() + datetime.timedelta(seconds=youtube.config_utils.PLAYLIST_EXPIRATION_TIME)), name)
+        super().__init__(expire or (datetime.datetime.now() + datetime.timedelta(seconds=youtube.utils.config_utils.PLAYLIST_EXPIRATION_TIME)), name)
         self.feed = feed
 
 class BasePlaylistFeedHandler(BaseYoutubeRssHandler):
