@@ -14,6 +14,7 @@ COOKIES_FILE_PATH = False
 AUDIO_DIR = None
 HL = None
 MARK_WATCHED = None
+FFMPEG_LIVE_LOGS = None
 
 def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str, default_value = None):
     """
@@ -32,7 +33,7 @@ def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str
 
 
 def init_config(conf):
-    global KEY, CLEANUP_PERIOD, CONVERT_VIDEO_PERIOD, AUDIO_EXPIRATION_TIME, PLAYLIST_EXPIRATION_TIME, HTTP_PROXY, HTTPS_PROXY, PROXIES, COOKIES_FILE_PATH, AUDIO_DIR, HL, MARK_WATCHED
+    global KEY, CLEANUP_PERIOD, CONVERT_VIDEO_PERIOD, AUDIO_EXPIRATION_TIME, PLAYLIST_EXPIRATION_TIME, HTTP_PROXY, HTTPS_PROXY, PROXIES, COOKIES_FILE_PATH, AUDIO_DIR, HL, MARK_WATCHED, FFMPEG_LIVE_LOGS
     KEY                      = str(get_env_or_config_option(conf, "YT_API_KEY"                  , "yt_api_key"                  , default_value=None))
     HTTP_PROXY               =     get_env_or_config_option(conf, "YT_HTTP_PROXY"               , "yt_http_proxy"               , default_value=None)
     HTTPS_PROXY              =     get_env_or_config_option(conf, "YT_HTTPS_PROXY"              , "yt_https_proxy"              , default_value=None)
@@ -44,8 +45,10 @@ def init_config(conf):
     AUDIO_DIR                = str(get_env_or_config_option(conf, "YT_AUDIO_DIR"                , "yt_audio_dir"                , default_value="./youtube/audio"))
     HL                       = str(get_env_or_config_option(conf, "YT_HL"                       , "yt_hl"                       , default_value="en"))
     MARK_WATCHED             =     get_env_or_config_option(conf, "YT_MARK_WATCHED"             , "yt_mark_watched"             , default_value=True)
+    FFMPEG_LIVE_LOGS         =     get_env_or_config_option(conf, "YT_FFMPEG_LIVE_LOGS"         , "yt_ffmpeg_live_logs"         , default_value=False)
 
     MARK_WATCHED = utils.convert_to_bool(MARK_WATCHED)
+    FFMPEG_LIVE_LOGS = utils.convert_to_bool(FFMPEG_LIVE_LOGS)
 
     if any(proxy is not None for proxy in (HTTP_PROXY, HTTPS_PROXY)):
         PROXIES = {}

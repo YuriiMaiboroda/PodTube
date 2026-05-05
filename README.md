@@ -160,6 +160,7 @@ autoload_newest_audio=1
 | yt_cookies_file_path        | YT_COOKIES_FILE_PATH        | `None`         | string | Path to youtube cookies file for login                                                   |
 | yt_hl                       | YT_HL                       | `en`           | string | HL parameter of youtube API for determine prefer language of titles, descriptions,  etc. |
 | yt_mark_watched             | YT_MARK_WATCHED             | `True`         | bool   | Mark episode watched when download audio (login with coockies required)                  |
+| yt_ffmpeg_live_logs         | YT_FFMPEG_LIVE_LOGS         | `False`        | bool   | Print ffmpeg grogress to log                                                             |
 
 ## License
 [BSD-2-Clause](./LICENSE)

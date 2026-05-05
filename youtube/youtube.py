@@ -20,6 +20,7 @@ from tornado.locks import Semaphore
 import youtube.utils.config_utils
 from youtube.utils.logging_utils import TaggedLogger, redirect_std_streams
 from youtube.utils.cache import CacheManager, CacheItem
+from youtube.utils.patch_ytdlp import ytdlp_ffmpeg_live_logs_context
 
 __version__ = 'v2025.06.30.0'
 
@@ -540,7 +541,7 @@ def download_youtube_audio(video: str):
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
         }],
-        'logger': LoggerForYoutubeDL(log_tags, progress_interval=10),
+        'logger': LoggerForYoutubeDL(log_tags, progress_interval=5),
         # 'progress_hooks': [progress_hook],
         'proxy': youtube.utils.config_utils.HTTPS_PROXY,
         'cookiefile': youtube.utils.config_utils.COOKIES_FILE_PATH,
@@ -564,11 +565,19 @@ def download_youtube_audio(video: str):
 
         ytdlp_params['download_ranges'] = download_ranges
 
+    if youtube.utils.config_utils.FFMPEG_LIVE_LOGS:
+        ppa: dict[list[str]] = ytdlp_params.setdefault('postprocessor_args', {})
+        ffmpeg_args: list[str] = ppa.setdefault('ffmpeg', [])
+        ffmpeg_args.extend(['-progress', 'pipe:2', '-nostats'])
 
     # This setup allows capturing logs from external tools (e.g. ffmpeg)
     # that write directly to sys.stderr or sys.stdout, and redirecting them to the Python logger.
     audio_name = None
-    with redirect_std_streams(logger), yt_dlp.YoutubeDL(ytdlp_params) as ydl:
+    with (
+        redirect_std_streams(logger),
+        ytdlp_ffmpeg_live_logs_context(youtube.utils.config_utils.FFMPEG_LIVE_LOGS),
+        yt_dlp.YoutubeDL(ytdlp_params) as ydl
+    ):
         info = ydl.extract_info(yturl, download=False, process=False)
         if (info.get('live_status', None) in ['is_live', 'is_upcoming', 'is_premiere']):
             raise PodtubeYoutubeError(f'Video is Live Stream or Premiere: {video}')
