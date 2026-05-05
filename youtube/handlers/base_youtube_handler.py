@@ -1,3 +1,5 @@
+import urllib.parse
+
 import youtube.utils.config_utils
 from youtube.utils.logging_utils import TaggedLogger
 import utils
@@ -41,6 +43,13 @@ class BaseYoutubeHandler(web.RequestHandler):
                     session.close()
                 except Exception as e:
                     self.logger.debug("Fail while closing session: " + e, stack_info=True)
+
+    def _request_summary(self) -> str:
+        return "%s %s (%s)" % (
+            self.request.method,
+            urllib.parse.unquote(self.request.uri),
+            self.request.remote_ip,
+        )
 
 class BaseYoutubeRssHandler(BaseYoutubeHandler):
     def prepare(self):
