@@ -43,7 +43,7 @@ class FileHandler(web.RequestHandler):
             )
         self.write('</body></html>')
 
-def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str, default_value = None):
+def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str, value_type: type, default_value = None):
     """
     Get the value of a configuration option from the given ConfigParser object or from the environment variable.
     
@@ -51,12 +51,13 @@ def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str
         conf (ConfigParser): The ConfigParser object containing the configuration options.
         env_name (str): The name of the environment variable to check for the option value.
         config_name (str): The name of the configuration option to retrieve.
+        value_type (type): Type of value
         default_value: The default value to return if the option is not found in the configuration or environment.
 
     Returns:
         The value of the configuration option from the ConfigParser object or environment variable, or the default value if not found.
     """
-    return utils.get_env_or_config_option(conf, env_name, config_name, "general", default_value=default_value)
+    return utils.get_env_or_config_option(conf, env_name, config_name, "general", value_type, default_value=default_value)
 
 def make_app(config: ConfigParser):
     """
@@ -171,14 +172,14 @@ if __name__ == '__main__':
         if not read_ok:
             print("Error reading configuration file: " + args.config_file, file=sys.stderr, flush=True)
             conf = None
-    utils.set_default_attr(args, "port",         get_env_or_config_option(conf, "GENERAL_PORT"        , "port"        , defaults["port"]))
-    utils.set_default_attr(args, "log_file",     get_env_or_config_option(conf, "GENERAL_LOG_FILE"    , "log_file"    , defaults["log_file"]))
-    utils.set_default_attr(args, "log_format",   get_env_or_config_option(conf, "GENERAL_LOG_FORMAT"  , "log_format"  , defaults["log_format"]))
-    utils.set_default_attr(args, "log_level",    get_env_or_config_option(conf, "GENERAL_LOG_LEVEL"   , "log_level"   , defaults["log_level"]))
-    utils.set_default_attr(args, "log_filemode", get_env_or_config_option(conf, "GENERAL_LOG_FILEMODE", "log_filemode", defaults["log_filemode"]))
+    utils.set_default_attr(args, "port",         get_env_or_config_option(conf, "GENERAL_PORT"        , "port"        , str, defaults["port"]))
+    utils.set_default_attr(args, "log_file",     get_env_or_config_option(conf, "GENERAL_LOG_FILE"    , "log_file"    , str, defaults["log_file"]))
+    utils.set_default_attr(args, "log_format",   get_env_or_config_option(conf, "GENERAL_LOG_FORMAT"  , "log_format"  , str, defaults["log_format"]))
+    utils.set_default_attr(args, "log_level",    get_env_or_config_option(conf, "GENERAL_LOG_LEVEL"   , "log_level"   , str, defaults["log_level"]))
+    utils.set_default_attr(args, "log_filemode", get_env_or_config_option(conf, "GENERAL_LOG_FILEMODE", "log_filemode", str, defaults["log_filemode"]))
     
     logging.basicConfig(
-        level=logging.getLevelName(args.log_level),
+        level=args.log_level,
         format=args.log_format,
         filename=args.log_file,
         filemode=args.log_filemode

@@ -5,6 +5,7 @@ from asyncio import sleep
 from datetime import datetime
 import sys
 from urllib.parse import urlencode
+from typing import Any
 
 from pytube import YouTube
 
@@ -45,10 +46,19 @@ async def get_total_storage(directory='.'):
 
 def convert_to_bool(input) -> bool:
     if type(input) is str:
-        return input.lower() in ['1', 'true', 't', 'yes', 'y', 'on']
+        return input.strip().lower() in ['1', 'true', 't', 'yes', 'y', 'on']
     return bool(input)
 
-def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str, config_section: str, conf_raw: bool = True, default_value = None):
+def parse_config_value(value: Any, value_type: type):
+    if value is None:
+        return value
+
+    if value_type is bool:
+        return convert_to_bool(value)
+
+    return value_type(value)
+
+def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str, config_section: str, value_type: type, conf_raw: bool = True, default_value = None):
     value = os.getenv(env_name)
     if value is not None:
         log_debug_safe("Got '%s' from ENV: %s", env_name, value)
@@ -65,7 +75,8 @@ def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str
     else:
         value = default_value
         log_debug_safe("No configuration file or environment variable '%s'. Default value is used: %s", env_name, value)
-    return value
+
+    return parse_config_value(value, value_type)
 
 
 def is_log_inited():

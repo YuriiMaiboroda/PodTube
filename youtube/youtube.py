@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import yt_dlp
+import yt_dlp.utils
 import threading
 
 from configparser import ConfigParser
@@ -543,8 +544,6 @@ def download_youtube_audio(video: str):
         }],
         'logger': LoggerForYoutubeDL(log_tags, progress_interval=5),
         # 'progress_hooks': [progress_hook],
-        'proxy': youtube.utils.config_utils.HTTPS_PROXY,
-        'cookiefile': youtube.utils.config_utils.COOKIES_FILE_PATH,
         'extractor_args': {
             'youtube': {
                 'lang': [(video_queue_item.additional_data or {}).get('hl', youtube.utils.config_utils.HL)],
@@ -552,6 +551,12 @@ def download_youtube_audio(video: str):
         },
         'extractor_retries': 1,
     }
+
+    if youtube.utils.config_utils.HTTPS_PROXY is not None:
+        ytdlp_params['proxy'] = youtube.utils.config_utils.HTTPS_PROXY,
+
+    if youtube.utils.config_utils.COOKIES_FILE_PATH is not None:
+        ytdlp_params['cookiefile'] = youtube.utils.config_utils.COOKIES_FILE_PATH,
 
     start_time = additional_data.get("start_time", None)
     end_time = additional_data.get("end_time", None)
