@@ -1,4 +1,4 @@
-import utils
+import utils.common
 
 from configparser import ConfigParser
 
@@ -29,7 +29,7 @@ def get_env_or_config_option(conf: ConfigParser, env_name: str, config_name: str
     Returns:
         The value of the configuration option, or the default value if the option is not found.
     """
-    return utils.get_env_or_config_option(conf, env_name, config_name, "youtube", value_type, default_value=default_value)
+    return utils.common.get_env_or_config_option(conf, env_name, config_name, "youtube", value_type, default_value=default_value)
 
 
 def init_config(conf):

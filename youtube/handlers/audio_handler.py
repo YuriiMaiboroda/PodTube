@@ -1,4 +1,4 @@
-from youtube.utils.logging_utils import TaggedLogger
+from utils.logging.tagged_logger import TaggedLogger
 import youtube.youtube
 from youtube.handlers.base_youtube_handler import BaseYoutubeHandler
 
@@ -7,20 +7,21 @@ from tornado import gen, httputil, iostream, web
 import os
 from pathlib import Path
 
-logger = TaggedLogger(__name__)
+logger = TaggedLogger(__name__, "YouTube")
 
 class AudioHandler(BaseYoutubeHandler):
     def initialize(self):
         """
         Initialize the object.
         """
+        super().initialize(logger)
         self.disconnected = False
 
     def prepare(self):
         super().prepare()
         self.set_header("Content-Type", "audio/mpeg")
 
-    async def head(self, audio):
+    async def head(self, audio: str):
         """
         Coroutine function to set headers for audio file response.
 
@@ -71,8 +72,8 @@ class AudioHandler(BaseYoutubeHandler):
         """
         A coroutine function that handles the GET request for audio files. It checks if the requested audio is available and, if so, streams the audio content to the client. If the audio is not available or an error occurs during the conversion, appropriate status codes are set and returned.
         """
-        with logger.tags(audio):
-            logger.info(f'Audio: {audio} ({self.request.remote_ip})')
+        with self.logger.tags(audio):
+            self.logger.info(f'Audio: {audio} ({self.request.remote_ip})')
 
             if (self.checkUnavailable(audio)):
                 return
@@ -197,7 +198,7 @@ class AudioHandler(BaseYoutubeHandler):
         """
         Handle the event when the connection is closed. It sets the 'disconnected' attribute to True.
         """
-        logger.warning(f'Audio: User quit during transcoding ({self.request.remote_ip})', tags=self.request.path)
+        self.logger.warning(f'Audio: User quit during transcoding ({self.request.remote_ip})', tags=self.request.path)
         self.disconnected = True
 
     def create_additional_data(self, audio):

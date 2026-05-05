@@ -1,10 +1,10 @@
-from youtube.utils.cache import CacheItem
-from youtube.utils.logging_utils import TaggedLogger
+from utils.cache import CacheItem
+from utils.logging.tagged_logger import TaggedLogger
 import youtube.youtube
 
 from tornado import web
 
-logger = TaggedLogger(__name__)
+logger = TaggedLogger(__name__, "YouTube")
 
 class ClearCacheHandler(web.RequestHandler):
     ALL = "ALL"

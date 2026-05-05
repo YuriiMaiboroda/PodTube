@@ -11,17 +11,22 @@ import os
 import re
 import yt_dlp
 import yt_dlp.utils
-import threading
 
 from configparser import ConfigParser
 from enum import Enum
 from pathlib import Path
 from tornado import ioloop
 from tornado.locks import Semaphore
+from utils.logging.tagged_logger import TaggedLogger
+from utils.logging.stream_to_logger import redirect_std_streams
 import youtube.utils.config_utils
-from youtube.utils.logging_utils import TaggedLogger, redirect_std_streams
-from youtube.utils.cache import CacheManager, CacheItem
+from utils.cache import CacheManager, CacheItem
 from youtube.utils.patch_ytdlp import ytdlp_ffmpeg_live_logs_context
+
+from youtube.logging.logger_for_ytdlp import LoggerForYoutubeDL
+from youtube.logging.ytdlp_progress_handler import YtdlpProgressHandler
+from youtube.logging.ffmpeg_progress_handler import FfmpegProgressHandler
+
 
 __version__ = 'v2025.06.30.0'
 
@@ -229,7 +234,7 @@ conversion_queue:dict[str, ConversionQueueItem] = {}
 converting_semaphore = Semaphore(3)
 active_tasks:set[asyncio.Task] = set()
 
-logger:TaggedLogger = TaggedLogger(__name__)
+logger:TaggedLogger = TaggedLogger(__name__, "YouTube")
 cache_manager:CacheManager = CacheManager()
 
 VIEDO_LINKS_CACHE_NAME = 'video_links'
@@ -405,107 +410,6 @@ def _on_task_done(task:asyncio.Task):
         except Exception as e:
             logger.error(f'Unhandled error in task: {e}', exc_info=e, stack_info=logger.isEnabledFor(logging.DEBUG))
 
-class LoggerForYoutubeDL:
-    _progress_re = re.compile(
-        r"""
-        ^\s*(?:\[[^\]]*\]\s*)*          # optional [tags]
-        (?P<percent>\d{1,3}(?:\.\d+)?)%\s+of\s+
-        (?P<size>.+?)\s+at\s+
-        (?P<speed>.+?)\s+ETA\s+      # speed can contain spaces (e.g. "Unknown B/s")
-        (?P<eta>\S+)
-        """,
-        re.VERBOSE
-    )
-
-    def __init__(self, progress_interval=1.0, progress_filter_enabled=True):
-        self.progress_interval = progress_interval
-        self.progress_filter_enabled = progress_filter_enabled
-
-        self._progress_timer = None
-        self._pending_progress_msg = None
-        self._progress_lock = threading.RLock()
-
-        self._seen_100_percent = False
-
-    def debug(self, msg: str):
-        # For compatibility with youtube-dl, both debug and info are passed into debug
-        # You can distinguish them by the prefix '[debug] '
-        if msg.startswith('[debug] '):
-            logger.debug(msg)
-        else:
-            self.info(msg)
-
-    def info(self, msg):
-        if self._handle_progress_message(msg):
-            return
-
-        logger.info(msg)
-
-    def warning(self, msg):
-        logger.warning(msg)
-
-    def error(self, msg):
-        logger.error(msg)
-
-    def _handle_progress_message(self, msg):
-        if not self.progress_filter_enabled:
-            return False
-
-        match = self._progress_re.match(msg)
-        if not match:
-            return False
-
-        percent = float(match.group('percent'))
-
-        is_first_100_percent = percent >= 100.0 and not self._seen_100_percent
-
-        if is_first_100_percent:
-            self._seen_100_percent = True
-
-        with self._progress_lock:
-            self._pending_progress_msg = msg
-            if is_first_100_percent or self._progress_timer is None:
-                self.flush_progress(restart_timer=True)
-
-        return True
-
-    def flush_progress(self, restart_timer=False):
-        with self._progress_lock:
-            if self._progress_timer is not None:
-                self._progress_timer.cancel()
-                self._progress_timer = None
-
-            if self._pending_progress_msg is not None:
-                logger.info(self._pending_progress_msg)
-                self._pending_progress_msg = None
-
-            if restart_timer:
-                self._start_progress_timer()
-
-    def _start_progress_timer(self):
-        with self._progress_lock:
-            self._progress_timer = threading.Timer(
-                self.progress_interval,
-                self._safe_timer_callback
-            )
-            self._progress_timer.daemon = True
-            self._progress_timer.start()
-
-    def _safe_timer_callback(self):
-        try:
-            self._on_progress_timer()
-        except Exception as ex:
-            if self._progress_timer is not None:
-                try:
-                    self._progress_timer.cancel()
-                finally:
-                    self._progress_timer = None
-            raise
-
-    def _on_progress_timer(self):
-        with self._progress_lock:
-            has_pending = self._pending_progress_msg is not None
-            self.flush_progress(restart_timer=has_pending)
 
 def download_youtube_audio(video: str):
     """
@@ -514,15 +418,18 @@ def download_youtube_audio(video: str):
     Args:
         video (str): Youtube video's key.
     """
-    with logger.tags(video) as log_scope:
+    with (
+        logger.tags(video) as log_scope,
+        LoggerForYoutubeDL(
+            logger,
+            FfmpegProgressHandler(logger, interval=5.0),
+            YtdlpProgressHandler(logger, interval=5.0),
+        ) as ytdlg_logger
+    ):
         video_queue_item = conversion_queue[video]
         yturl = get_youtube_url(video)
         logger.debug(f"Full URL: {yturl}")
         additional_data = video_queue_item.additional_data or {}
-
-        # audio_file = f'{AUDIO_DIR}/{video}.mp3'
-        # audio_file_temp = audio_file + '.temp'
-        # video_file = None
 
         Path(youtube.utils.config_utils.AUDIO_DIR).mkdir(parents=True, exist_ok=True)
         logger.debug('Start downloading audio stream')
@@ -546,7 +453,7 @@ def download_youtube_audio(video: str):
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
             }],
-            'logger': LoggerForYoutubeDL(progress_interval=5),
+            'logger': ytdlg_logger,
             # 'progress_hooks': [progress_hook],
             'extractor_args': {
                 'youtube': {

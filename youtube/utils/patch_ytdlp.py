@@ -1,4 +1,5 @@
 import contextlib
+import enum
 import os
 import re
 import subprocess
@@ -13,19 +14,30 @@ from yt_dlp.utils import Popen as YtdlpPopen
 
 ACTIVE_PP_ATTR = '_active_streaming_log_pp'
 
-FFMPEG_EXE = [
-    'ffmpeg', 'ffmpeg.exe',
-    # 'ffprobe', 'ffprobe.exe',
-    # 'avconv', 'avconv.exe',
-    # 'avprobe', 'avprobe.exe',
-]
+class AppNames(enum.StrEnum):
+    FFMPEG = "ffmpeg"
+    # FFPROBE = "ffprobe"
+    # AVCONV = "avconv"
+    # AVPROBE = "avprobe"
 
-def _is_ffmpeg_tool(cmd) -> bool:
+
+FFMPEG_EXE = {
+    'ffmpeg' : AppNames.FFMPEG,
+    'ffmpeg.exe' : AppNames.FFMPEG,
+    # 'ffprobe' : AppNames.FFPROBE,
+    # 'ffprobe.exe' : AppNames.FFPROBE,
+    # 'avconv' : AppNames.AVCONV,
+    # 'avconv.exe' : AppNames.AVCONV,
+    # 'avprobe' : AppNames.AVPROBE,
+    # 'avprobe.exe' : AppNames.AVPROBE,
+}
+
+def get_app_name(cmd) -> bool:
     if not isinstance(cmd, (list, tuple)) or not cmd:
-        return False
+        return None
 
     exe = os.path.basename(str(cmd[0])).lower()
-    return exe in FFMPEG_EXE
+    return FFMPEG_EXE.get(exe, None)
 
 
 def _stream_reader(stream_name: str, stream: IO, output_queue: Queue[tuple[int, str, str|bytes|None]]):
@@ -44,129 +56,6 @@ def _decode_line_for_log(line: str | bytes) -> str:
 
 def _join_output(parts: list[str|bytes], text_mode: bool):
     return ''.join(parts) if text_mode else b''.join(parts)
-
-
-FFMPEG_DURATION_RE = re.compile(
-    r'Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)'
-)
-
-
-def parse_ffmpeg_duration(line: str) -> float:
-    match = FFMPEG_DURATION_RE.search(line)
-    if not match:
-        return None
-
-    hours, minutes, seconds = match.groups()
-    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-
-
-def parse_ffmpeg_time(value: str):
-    if not value:
-        return None
-
-    if value.isdigit():
-        # out_time_ms is actually microseconds in ffmpeg progress output.
-        return int(value) / 1_000_000
-
-    if ':' in value:
-        hours, minutes, seconds = value.split(':')
-        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-
-    return None
-
-
-def format_duration(seconds: float):
-    if seconds is None:
-        return '--:--:--'
-
-    seconds = max(0, int(seconds))
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    secs = seconds % 60
-
-    return f'{hours:02d}:{minutes:02d}:{secs:02d}'
-
-
-class FfmpegProgressFormatter:
-    def __init__(self, min_interval : float = 5.0):
-        self.duration: float = None
-        self.out_time: float = None
-        self.speed: str = None
-        self.started_at: float = time.monotonic()
-        self.last_log_at: float = 0.0
-        self.min_interval: float = min_interval
-
-    def handle_line(self, line: str):
-        duration = parse_ffmpeg_duration(line)
-        if duration is not None:
-            self.duration = duration
-            return None
-
-        if '=' not in line:
-            return None
-
-        key, value = line.split('=', 1)
-
-        if key == 'out_time_ms':
-            self.out_time = parse_ffmpeg_time(value)
-        elif key == 'out_time':
-            self.out_time = parse_ffmpeg_time(value)
-        elif key == 'speed':
-            self.speed = value
-        elif key == 'progress':
-            is_end = value == 'end'
-            return self.format(force=is_end, completed=is_end)
-
-        return None
-
-    def format(self, force=False, completed=False):
-        now = time.monotonic()
-
-        if not force and now - self.last_log_at < self.min_interval:
-            return None
-
-        self.last_log_at = now
-
-        elapsed = now - self.started_at
-
-        status = 'progress'
-        percent = None
-        eta = None
-
-        if self.duration and self.out_time is not None:
-            percent = min(100.0, self.out_time / self.duration * 100.0)
-            remaining_media = max(0.0, self.duration - self.out_time)
-
-            speed_value = self.parse_speed()
-            eta = remaining_media / speed_value if speed_value and speed_value > 0 else None
-
-            if completed:
-                status = 'completed'
-
-        message = f'{status}'
-        if (percent is not None):
-            message += f' {percent:.1f}%'
-        
-        message += (
-            ' | '
-            f'processed {format_duration(self.out_time)} / {format_duration(self.duration)} | '
-            f'speed {self.speed or "N/A"} | '
-            f'eta {format_duration(eta)} | '
-            f'elapsed {format_duration(elapsed)}'
-        )
-
-        return message
-
-    def parse_speed(self):
-        if not self.speed:
-            return None
-
-        value = self.speed.strip().removesuffix('x')
-
-        try:
-            return float(value)
-        except ValueError:
-            return None
 
 
 @contextlib.contextmanager
@@ -199,12 +88,9 @@ def patch_ytdlp_ffmpeg_streaming_logs():
     def patched_run(cls, *args, timeout=None, **kwargs):
         cmd = args[0] if args else kwargs.get('args')
 
-        if not _is_ffmpeg_tool(cmd):
+        app_name = get_app_name(cmd)
+        if not app_name:
             return original_popen_run(*args, timeout=timeout, **kwargs)
-
-        exe = os.path.basename(str(cmd[0]))
-        app_name = os.path.splitext(exe)[0].lower()
-        progress_formatter = FfmpegProgressFormatter(min_interval=5.0) if app_name == 'ffmpeg' else None
 
         text_mode = (
             kwargs.get('text')
@@ -257,12 +143,8 @@ def patch_ytdlp_ffmpeg_streaming_logs():
                 clean_line = _decode_line_for_log(line)
 
                 if clean_line and active_pp is not None:
-                    if progress_formatter and stream_name == 'stderr':
-                        clean_line = progress_formatter.handle_line(clean_line)
-                        if not clean_line:
-                            continue
-
-                    active_pp.to_screen(f'{clean_line}')
+                    clean_line = f'[{app_name}] {clean_line}'
+                    active_pp.to_screen(clean_line)
 
             returncode = proc.wait(timeout=timeout)
 
@@ -294,4 +176,5 @@ def patch_ytdlp_ffmpeg_live_logs():
 def ytdlp_ffmpeg_live_logs_context(enabled: bool):
     if not enabled:
         return contextlib.nullcontext()
+
     return patch_ytdlp_ffmpeg_live_logs()

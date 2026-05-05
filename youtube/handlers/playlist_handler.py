@@ -1,11 +1,11 @@
 import pyyoutube
 
 from youtube.handlers.base_playlist_feed_handler import BasePlaylistFeedHandler
-from youtube.utils.logging_utils import TaggedLogger
+from utils.logging.tagged_logger import TaggedLogger
 
 from tornado import ioloop
 
-logger = TaggedLogger(__name__)
+logger = TaggedLogger(__name__, "YouTube")
 
 class PlaylistHandler(BasePlaylistFeedHandler):
     def initialize(self, audio_handler_path: str):
@@ -21,10 +21,10 @@ class PlaylistHandler(BasePlaylistFeedHandler):
         """
         A coroutine function to fetch a playlist and generate an RSS feed based on the playlist content.
         """
-        with logger.tags(playlist):
+        with self.logger.tags(playlist):
             index = playlist.find('/')
             if index != -1:
-                logger.warning(f"Playlist name contains a slash: {playlist}")
+                self.logger.warning(f"Playlist name contains a slash: {playlist}")
                 playlist = playlist[:index]
 
             if self.try_response_from_cache(playlist):
@@ -40,12 +40,12 @@ class PlaylistHandler(BasePlaylistFeedHandler):
                     )
                 )
             except pyyoutube.PyYouTubeException as e:
-                logger.error(f'Error retrieving playlist information: {e}')
+                self.logger.error(f'Error retrieving playlist information: {e}')
                 self.send_error(reason='Error retrieving playlist information', status_code=404 if e.status_code == 404 else 500)
                 return
 
             if not response.items:
-                logger.error(f'Playlist not found')
+                self.logger.error(f'Playlist not found')
                 self.send_error(reason='Playlist not found', status_code=404)
                 return
 
@@ -67,12 +67,12 @@ class PlaylistHandler(BasePlaylistFeedHandler):
                         )
                     )
                 except pyyoutube.PyYouTubeException as e:
-                    logger.error(f'Error retrieving channel information: {e}')
+                    self.logger.error(f'Error retrieving channel information: {e}')
                     self.send_error(reason='Error retrieving channel information', status_code=404 if e.status_code == 404 else 500)
                     return
 
                 if not response.items:
-                    logger.error(f'Channel for playlist not found', [playlist, snippet.channelId])
+                    self.logger.error(f'Channel for playlist not found', [playlist, snippet.channelId])
                     self.send_error(reason='Channel for playlist not found', status_code=404)
                     return
 
@@ -90,7 +90,7 @@ class PlaylistHandler(BasePlaylistFeedHandler):
             channel_title = snippet.channelTitle
             playlist_title = f"{channel_title}: {snippet.title}"
 
-            logger.info(f'Playlist: {playlist} ({playlist_title})')
+            self.logger.info(f'Playlist: {playlist} ({playlist_title})')
             if not title:
                 title = playlist_title
             if not description:

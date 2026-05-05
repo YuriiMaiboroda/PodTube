@@ -7,9 +7,9 @@ from feedgen.ext.podcast_entry import PodcastEntryExtension
 from tornado import ioloop
 from urllib.parse import urlencode, urlunparse
 
-from youtube.utils.cache import CacheItem
+from utils.cache import CacheItem
 from youtube.handlers.base_youtube_handler import BaseYoutubeRssHandler
-from youtube.utils.logging_utils import TaggedLogger
+from utils.logging.tagged_logger import TaggedLogger
 import youtube.utils.config_utils
 import youtube.youtube
 
@@ -32,7 +32,7 @@ class FeedCacheItem(CacheItem):
         self.feed = feed
 
 class BasePlaylistFeedHandler(BaseYoutubeRssHandler):
-    def initialize(self, logger:TaggedLogger, audio_handler_path:str):
+    def initialize(self, logger: TaggedLogger, audio_handler_path:str):
         super().initialize(logger)
         self.audio_handler_path = audio_handler_path
 

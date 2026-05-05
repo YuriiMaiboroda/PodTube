@@ -1,11 +1,11 @@
 import pyyoutube
 
 from tornado import ioloop
-from youtube.utils.logging_utils import TaggedLogger
+from utils.logging.tagged_logger import TaggedLogger
 
 from youtube.handlers.base_playlist_feed_handler import BasePlaylistFeedHandler
 
-logger = TaggedLogger(__name__)
+logger = TaggedLogger(__name__, "YouTube")
 
 class ChannelHandler(BasePlaylistFeedHandler):
 
@@ -45,10 +45,10 @@ class ChannelHandler(BasePlaylistFeedHandler):
             - None
         """
 
-        with logger.tags(channel):
+        with self.logger.tags(channel):
             index = channel.find('/')
             if index != -1:
-                logger.warning(f"Channel name contains a slash: {channel}")
+                self.logger.warning(f"Channel name contains a slash: {channel}")
                 channel = channel[:index]
 
             if self.try_response_from_cache(channel):
@@ -72,16 +72,16 @@ class ChannelHandler(BasePlaylistFeedHandler):
                     )
                 )
             except pyyoutube.PyYouTubeException as e:
-                logger.error(f'Error retrieving channel information: {e}')
+                self.logger.error(f'Error retrieving channel information: {e}')
                 self.send_error(reason='Error retrieving channel information', status_code=404 if e.status_code == 404 else 500)
                 return
 
             if not channel_response.items:
-                logger.error(f'Channel not found')
+                self.logger.error(f'Channel not found')
                 self.send_error(reason='Channel not found', status_code=404)
                 return
 
-            logger.debug('Downloaded Channel Information')
+            self.logger.debug('Downloaded Channel Information')
 
             channel_data = channel_response.items[0]
             playlist = channel_data.contentDetails.relatedPlaylists.uploads
@@ -90,7 +90,7 @@ class ChannelHandler(BasePlaylistFeedHandler):
 
             title = channel_data.title or channel
 
-            logger.info(f'Channel: {channel} ({title})')
+            self.logger.info(f'Channel: {channel} ({title})')
             thumbnails = channel_data.thumbnails
             thumbnail = self.getMaxResolutionThumbnail(thumbnails)
 
