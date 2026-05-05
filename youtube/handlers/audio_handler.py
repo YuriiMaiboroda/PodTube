@@ -45,7 +45,7 @@ class AudioHandler(BaseYoutubeHandler):
         """
         video_link_item:youtube.youtube.VideoLinkCacheItem = youtube.youtube.cache_manager.get(youtube.youtube.VIEDO_LINKS_CACHE_NAME, audio)
         if video_link_item:
-            # logger.info(f'Audio: {audio} is not available ({self.request.remote_ip})', audio)
+            # logger.info(f'Audio: {audio} is not available ({self.request.remote_ip})')
             match video_link_item.unavailable_type:
                 case youtube.youtube.UnavailableType.STREAM:
                     self.set_status(422) # Unprocessable Content. E.g. the video is a live stream
@@ -71,88 +71,89 @@ class AudioHandler(BaseYoutubeHandler):
         """
         A coroutine function that handles the GET request for audio files. It checks if the requested audio is available and, if so, streams the audio content to the client. If the audio is not available or an error occurs during the conversion, appropriate status codes are set and returned.
         """
-        logger.info(f'Audio: {audio} ({self.request.remote_ip})', audio)
+        with logger.tags(audio):
+            logger.info(f'Audio: {audio} ({self.request.remote_ip})')
 
-        if (self.checkUnavailable(audio)):
-            return
-        mp3_file = youtube.youtube.get_audio_file_path(audio)
-        if not os.path.exists(mp3_file):
-            additional_data = self.create_additional_data(audio)
-            youtube.youtube.add_video_to_conversion_queue(
-                audio,
-                additional_data
-            )
-            while youtube.youtube.is_video_in_conversion_queue(audio):
-                await gen.sleep(0.5)
-                if self.disconnected:
-                    # logger.info(f'User was disconnected while requested audio: {audio} ({self.request.remote_ip})', audio)
-                    self.set_status(408)
-                    return
-#        if audio in video_links and 'unavailable' in video_links[audio] and video_links[audio]['unavailable'] == True:
-#            # logger.info(f'Audio: {audio} is not available ({self.request.remote_ip})', audio)
-#            self.set_status(422) # Unprocessable Content. E.g. the video is a live stream
-#            return
-        if (self.checkUnavailable(audio)):
-            return
-        if not os.path.exists(mp3_file):
-            self.set_status(404) # An error occurred during the conversion and the file was not created
-            return
-        request_range = None
-        range_header = self.request.headers.get("Range")
-        if range_header:
-            # As per RFC 2616 14.16, if an invalid Range header is specified,
-            # the request will be treated as if the header didn't exist.
-            request_range = httputil._parse_request_range(range_header)
-
-        size = os.stat(mp3_file).st_size
-        if request_range:
-            start, end = request_range
-            if (start is not None and start >= size) or end == 0:
-                # As per RFC 2616 14.35.1, a range is not satisfiable only: if
-                # the first requested byte is equal to or greater than the
-                # content, or when a suffix with length 0 is specified
-                self.set_status(416)  # Range Not Satisfiable
-                self.set_header("Content-Type", "audio/mpeg")
-                self.set_header("Content-Range", f"bytes */{size}")
+            if (self.checkUnavailable(audio)):
                 return
-            if start is not None and start < 0:
-                start += size
-            if end is not None and end > size:
-                # Clients sometimes blindly use a large range to limit their
-                # download size; cap the endpoint at the actual file size.
-                end = size
-            # Note: only return HTTP 206 if less than the entire range has been
-            # requested. Not only is this semantically correct, but Chrome
-            # refuses to play audio if it gets an HTTP 206 in response to
-            # ``Range: bytes=0-``.
-            if size != (end or size) - (start or 0):
-                self.set_status(206)  # Partial Content
-                self.set_header(
-                    "Content-Range",
-                    httputil._get_content_range(start, end, size)
+            mp3_file = youtube.youtube.get_audio_file_path(audio)
+            if not os.path.exists(mp3_file):
+                additional_data = self.create_additional_data(audio)
+                youtube.youtube.add_video_to_conversion_queue(
+                    audio,
+                    additional_data
                 )
-        else:
-            start = end = None
-        if start is not None and end is not None:
-            content_length = end - start
-        elif end is not None:
-            content_length = end
-        elif start is not None:
-            content_length = size - start
-        else:
-            content_length = size
-        self.set_header("Accept-Ranges", "bytes")
-        self.set_header("Content-Length", content_length)
-        self.set_header('Content-Type', 'audio/mpeg')
-        content = self.get_content(mp3_file, start, end)
-        if isinstance(content, bytes):
-            content = [content]
-        for chunk in content:
-            try:
-                self.write(chunk)
-                await self.flush()
-            except iostream.StreamClosedError:
+                while youtube.youtube.is_video_in_conversion_queue(audio):
+                    await gen.sleep(0.5)
+                    if self.disconnected:
+                        # logger.info(f'User was disconnected while requested audio: {audio} ({self.request.remote_ip})')
+                        self.set_status(408)
+                        return
+    #        if audio in video_links and 'unavailable' in video_links[audio] and video_links[audio]['unavailable'] == True:
+    #            # logger.info(f'Audio: {audio} is not available ({self.request.remote_ip})')
+    #            self.set_status(422) # Unprocessable Content. E.g. the video is a live stream
+    #            return
+            if (self.checkUnavailable(audio)):
                 return
+            if not os.path.exists(mp3_file):
+                self.set_status(404) # An error occurred during the conversion and the file was not created
+                return
+            request_range = None
+            range_header = self.request.headers.get("Range")
+            if range_header:
+                # As per RFC 2616 14.16, if an invalid Range header is specified,
+                # the request will be treated as if the header didn't exist.
+                request_range = httputil._parse_request_range(range_header)
+
+            size = os.stat(mp3_file).st_size
+            if request_range:
+                start, end = request_range
+                if (start is not None and start >= size) or end == 0:
+                    # As per RFC 2616 14.35.1, a range is not satisfiable only: if
+                    # the first requested byte is equal to or greater than the
+                    # content, or when a suffix with length 0 is specified
+                    self.set_status(416)  # Range Not Satisfiable
+                    self.set_header("Content-Type", "audio/mpeg")
+                    self.set_header("Content-Range", f"bytes */{size}")
+                    return
+                if start is not None and start < 0:
+                    start += size
+                if end is not None and end > size:
+                    # Clients sometimes blindly use a large range to limit their
+                    # download size; cap the endpoint at the actual file size.
+                    end = size
+                # Note: only return HTTP 206 if less than the entire range has been
+                # requested. Not only is this semantically correct, but Chrome
+                # refuses to play audio if it gets an HTTP 206 in response to
+                # ``Range: bytes=0-``.
+                if size != (end or size) - (start or 0):
+                    self.set_status(206)  # Partial Content
+                    self.set_header(
+                        "Content-Range",
+                        httputil._get_content_range(start, end, size)
+                    )
+            else:
+                start = end = None
+            if start is not None and end is not None:
+                content_length = end - start
+            elif end is not None:
+                content_length = end
+            elif start is not None:
+                content_length = size - start
+            else:
+                content_length = size
+            self.set_header("Accept-Ranges", "bytes")
+            self.set_header("Content-Length", content_length)
+            self.set_header('Content-Type', 'audio/mpeg')
+            content = self.get_content(mp3_file, start, end)
+            if isinstance(content, bytes):
+                content = [content]
+            for chunk in content:
+                try:
+                    self.write(chunk)
+                    await self.flush()
+                except iostream.StreamClosedError:
+                    return
 
     @classmethod
     def get_content(cls, abspath, start=None, end=None):
@@ -196,7 +197,7 @@ class AudioHandler(BaseYoutubeHandler):
         """
         Handle the event when the connection is closed. It sets the 'disconnected' attribute to True.
         """
-        logger.warning(f'Audio: User quit during transcoding ({self.request.remote_ip})', self.request.path)
+        logger.warning(f'Audio: User quit during transcoding ({self.request.remote_ip})', tags=self.request.path)
         self.disconnected = True
 
     def create_additional_data(self, audio):

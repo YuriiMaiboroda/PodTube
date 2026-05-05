@@ -45,76 +45,76 @@ class ChannelHandler(BasePlaylistFeedHandler):
             - None
         """
 
-        index = channel.find('/')
-        if index != -1:
-            logger.warning(f"Channel name contains a slash: {channel}", channel)
-            channel = channel[:index]
+        with logger.tags(channel):
+            index = channel.find('/')
+            if index != -1:
+                logger.warning(f"Channel name contains a slash: {channel}")
+                channel = channel[:index]
 
-        if self.try_response_from_cache(channel):
-            return
+            if self.try_response_from_cache(channel):
+                return
 
-        handle = None
-        channel_id = None
-        if channel.startswith('@'):
-            handle = channel
-        else:
-            channel_id = channel
+            handle = None
+            channel_id = None
+            if channel.startswith('@'):
+                handle = channel
+            else:
+                channel_id = channel
 
-        try:
-            channel_response:pyyoutube.ChannelListResponse = await ioloop.IOLoop.current().run_in_executor(
-                None,
-                lambda: self.youtube_client.channels.list(
-                    channel_id=channel_id,
-                    for_handle=handle,
-                    parts=['snippet', 'contentDetails', 'topicDetails'],
-                    hl=self.hl,
+            try:
+                channel_response:pyyoutube.ChannelListResponse = await ioloop.IOLoop.current().run_in_executor(
+                    None,
+                    lambda: self.youtube_client.channels.list(
+                        channel_id=channel_id,
+                        for_handle=handle,
+                        parts=['snippet', 'contentDetails', 'topicDetails'],
+                        hl=self.hl,
+                    )
                 )
+            except pyyoutube.PyYouTubeException as e:
+                logger.error(f'Error retrieving channel information: {e}')
+                self.send_error(reason='Error retrieving channel information', status_code=404 if e.status_code == 404 else 500)
+                return
+
+            if not channel_response.items:
+                logger.error(f'Channel not found')
+                self.send_error(reason='Channel not found', status_code=404)
+                return
+
+            logger.debug('Downloaded Channel Information')
+
+            channel_data = channel_response.items[0]
+            playlist = channel_data.contentDetails.relatedPlaylists.uploads
+            categories = [category.rsplit('/', 1)[-1] for category in channel_data.topicDetails.topicCategories] if channel_data.topicDetails and channel_data.topicDetails.topicCategories else []
+            channel_data = channel_data.snippet
+
+            title = channel_data.title or channel
+
+            logger.info(f'Channel: {channel} ({title})')
+            thumbnails = channel_data.thumbnails
+            thumbnail = self.getMaxResolutionThumbnail(thumbnails)
+
+            description = channel_data.description or ' '
+            icon_url = thumbnail.url if thumbnail else ""
+            uniq_id = f'{self.request.protocol}://{self.request.host}{self.request.uri}'
+            channel_url = f'https://www.youtube.com/' + (handle or f'channel/{channel}')
+            language = channel_data.defaultLanguage or 'en-US'
+            feed = await self.build_feed(
+                channel,
+                playlist,
+                uniq_id,
+                channel_url,
+                title,
+                title,
+                description,
+                icon_url,
+                language,
+                categories
             )
-        except pyyoutube.PyYouTubeException as e:
-            logger.error(f'Error retrieving channel information: {e}', channel)
-            self.send_error(reason='Error retrieving channel information', status_code=404 if e.status_code == 404 else 500)
-            return
 
-        if not channel_response.items:
-            logger.error(f'Channel not found', channel)
-            self.send_error(reason='Channel not found', status_code=404)
-            return
+            if not feed:
+                self.send_error(reason='Error Downloading Channel')
+                return
 
-        logger.debug('Downloaded Channel Information', channel)
-
-        channel_data = channel_response.items[0]
-        playlist = channel_data.contentDetails.relatedPlaylists.uploads
-        categories = [category.rsplit('/', 1)[-1] for category in channel_data.topicDetails.topicCategories] if channel_data.topicDetails and channel_data.topicDetails.topicCategories else []
-        channel_data = channel_data.snippet
-
-        title = channel_data.title or channel
-
-        logger.info(f'Channel: {channel} ({title})', channel)
-        thumbnails = channel_data.thumbnails
-        thumbnail = self.getMaxResolutionThumbnail(thumbnails)
-
-        description = channel_data.description or ' '
-        icon_url = thumbnail.url if thumbnail else ""
-        uniq_id = f'{self.request.protocol}://{self.request.host}{self.request.uri}'
-        channel_url = f'https://www.youtube.com/' + (handle or f'channel/{channel}')
-        language = channel_data.defaultLanguage or 'en-US'
-        feed = await self.build_feed(
-            channel,
-            playlist,
-            uniq_id,
-            channel_url,
-            title,
-            title,
-            description,
-            icon_url,
-            language,
-            categories,
-            channel
-        )
-
-        if not feed:
-            self.send_error(reason='Error Downloading Channel')
-            return
-
-        self.write(feed)
-        self.finish()
+            self.write(feed)
+            self.finish()

@@ -21,105 +21,105 @@ class PlaylistHandler(BasePlaylistFeedHandler):
         """
         A coroutine function to fetch a playlist and generate an RSS feed based on the playlist content.
         """
-        index = playlist.find('/')
-        if index != -1:
-            logger.warning(f"Playlist name contains a slash: {playlist}", playlist)
-            playlist = playlist[:index]
+        with logger.tags(playlist):
+            index = playlist.find('/')
+            if index != -1:
+                logger.warning(f"Playlist name contains a slash: {playlist}")
+                playlist = playlist[:index]
 
-        if self.try_response_from_cache(playlist):
-            return
+            if self.try_response_from_cache(playlist):
+                return
 
-        try:
-            response:pyyoutube.PlaylistListResponse = await ioloop.IOLoop.current().run_in_executor(
-                None,
-                lambda: self.youtube_client.playlists.list(
-                    playlist_id=playlist,
-                    parts=['snippet', 'contentDetails'],
-                    hl=self.hl,
-                )
-            )
-        except pyyoutube.PyYouTubeException as e:
-            logger.error(f'Error retrieving playlist information: {e}', playlist)
-            self.send_error(reason='Error retrieving playlist information', status_code=404 if e.status_code == 404 else 500)
-            return
-
-        if not response.items:
-            logger.error(f'Playlist not found', playlist)
-            self.send_error(reason='Playlist not found', status_code=404)
-            return
-
-        snippet:pyyoutube.PlaylistSnippet = response.items[0].snippet
-
-        icon_url = None
-        title = None
-        description = None
-        language = None
-
-        if self.get_argument("as_channel", None) is not None:
             try:
-                response:pyyoutube.ChannelListResponse = await ioloop.IOLoop.current().run_in_executor(
+                response:pyyoutube.PlaylistListResponse = await ioloop.IOLoop.current().run_in_executor(
                     None,
-                    lambda: self.youtube_client.channels.list(
-                        channel_id=snippet.channelId,
-                        parts=['snippet'],
+                    lambda: self.youtube_client.playlists.list(
+                        playlist_id=playlist,
+                        parts=['snippet', 'contentDetails'],
                         hl=self.hl,
                     )
                 )
             except pyyoutube.PyYouTubeException as e:
-                logger.error(f'Error retrieving channel information: {e}', playlist)
-                self.send_error(reason='Error retrieving channel information', status_code=404 if e.status_code == 404 else 500)
+                logger.error(f'Error retrieving playlist information: {e}')
+                self.send_error(reason='Error retrieving playlist information', status_code=404 if e.status_code == 404 else 500)
                 return
 
             if not response.items:
-                logger.error(f'Channel for playlist not found', [playlist, snippet.channelId])
-                self.send_error(reason='Channel for playlist not found', status_code=404)
+                logger.error(f'Playlist not found')
+                self.send_error(reason='Playlist not found', status_code=404)
                 return
 
-            channel_data:pyyoutube.ChannelSnippet = response.items[0].snippet
-            thumbnail = self.getMaxResolutionThumbnail(channel_data.thumbnails)
-            if thumbnail:
-                icon_url = thumbnail.url
-            if channel_data.title:
-                title = channel_data.title
-            if channel_data.description:
-                description = channel_data.description
-            if channel_data.defaultLanguage:
-                language = channel_data.defaultLanguage
+            snippet:pyyoutube.PlaylistSnippet = response.items[0].snippet
 
-        channel_title = snippet.channelTitle
-        playlist_title = f"{channel_title}: {snippet.title}"
+            icon_url = None
+            title = None
+            description = None
+            language = None
 
-        logger.info(f'Playlist: {playlist} ({playlist_title})', playlist)
-        if not title:
-            title = playlist_title
-        if not description:
-            description = snippet.description or ' '
-        if not icon_url:
-            thumbnail = self.getMaxResolutionThumbnail(snippet.thumbnails)
-            icon_url = thumbnail.url if thumbnail else None
+            if self.get_argument("as_channel", None) is not None:
+                try:
+                    response:pyyoutube.ChannelListResponse = await ioloop.IOLoop.current().run_in_executor(
+                        None,
+                        lambda: self.youtube_client.channels.list(
+                            channel_id=snippet.channelId,
+                            parts=['snippet'],
+                            hl=self.hl,
+                        )
+                    )
+                except pyyoutube.PyYouTubeException as e:
+                    logger.error(f'Error retrieving channel information: {e}')
+                    self.send_error(reason='Error retrieving channel information', status_code=404 if e.status_code == 404 else 500)
+                    return
 
-        if not language:
-            language = snippet.defaultLanguage or 'en-US'
+                if not response.items:
+                    logger.error(f'Channel for playlist not found', [playlist, snippet.channelId])
+                    self.send_error(reason='Channel for playlist not found', status_code=404)
+                    return
 
-        playlist_url = f'https://www.youtube.com/playlist/?list={playlist[0]}'
-        uniq_id = f'{self.request.protocol}://{self.request.host}{self.request.uri}'
-        feed = await self.build_feed(
-            playlist,
-            playlist,
-            uniq_id,
-            playlist_url,
-            channel_title,
-            title,
-            description,
-            icon_url,
-            language,
-            [],
-            playlist
-        )
+                channel_data:pyyoutube.ChannelSnippet = response.items[0].snippet
+                thumbnail = self.getMaxResolutionThumbnail(channel_data.thumbnails)
+                if thumbnail:
+                    icon_url = thumbnail.url
+                if channel_data.title:
+                    title = channel_data.title
+                if channel_data.description:
+                    description = channel_data.description
+                if channel_data.defaultLanguage:
+                    language = channel_data.defaultLanguage
 
-        if not feed:
-            self.send_error(reason='Error Downloading Playlist')
-            return
+            channel_title = snippet.channelTitle
+            playlist_title = f"{channel_title}: {snippet.title}"
 
-        self.write(feed)
-        self.finish()
+            logger.info(f'Playlist: {playlist} ({playlist_title})')
+            if not title:
+                title = playlist_title
+            if not description:
+                description = snippet.description or ' '
+            if not icon_url:
+                thumbnail = self.getMaxResolutionThumbnail(snippet.thumbnails)
+                icon_url = thumbnail.url if thumbnail else None
+
+            if not language:
+                language = snippet.defaultLanguage or 'en-US'
+
+            playlist_url = f'https://www.youtube.com/playlist/?list={playlist[0]}'
+            uniq_id = f'{self.request.protocol}://{self.request.host}{self.request.uri}'
+            feed = await self.build_feed(
+                playlist,
+                playlist,
+                uniq_id,
+                playlist_url,
+                channel_title,
+                title,
+                description,
+                icon_url,
+                language,
+                []
+            )
+
+            if not feed:
+                self.send_error(reason='Error Downloading Playlist')
+                return
+
+            self.write(feed)
+            self.finish()

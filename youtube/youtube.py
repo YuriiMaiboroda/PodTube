@@ -91,12 +91,13 @@ class AudioFileCacheItem(CacheItem):
         Deletes the audio file from the filesystem.
         This method is called when the cache item is expired or cleared.
         """
-        if os.path.exists(self.__file_path):
-            try:
-                os.remove(self.__file_path)
-                logger.debug(f'Deleted audio file: {self.__file_path}', 'cleanup')
-            except Exception as ex:
-                logger.error(f'Error removing audio file {self.__file_path}: {ex}', 'cleanup')
+        with logger.tags('cleanup'):
+            if os.path.exists(self.__file_path):
+                try:
+                    os.remove(self.__file_path)
+                    logger.debug(f'Deleted audio file: {self.__file_path}')
+                except Exception as ex:
+                    logger.error(f'Error removing audio file {self.__file_path}: {ex}')
 
 class VideoLinkCacheItem(CacheItem):
     unavailable_type: UnavailableType | None = None
@@ -272,14 +273,15 @@ def add_video_to_conversion_queue(video: str, additional_data) -> bool:
     Args:
         video (str): The ID of the video to be added to the conversion queue.
     """
-    global conversion_queue
-    if video not in conversion_queue:
-        conversion_queue[video] = ConversionQueueItem(video, datetime.datetime.now(), additional_data)
-        # logger.info(f'Added video {video} to conversion queue', 'convert_video')
-        return True
-    else:
-        # logger.debug(f'Video {video} is already in the conversion queue', 'convert_video')
-        return False
+    with logger.tags('convert_video'):
+        global conversion_queue
+        if video not in conversion_queue:
+            conversion_queue[video] = ConversionQueueItem(video, datetime.datetime.now(), additional_data)
+            # logger.info(f'Added video {video} to conversion queue')
+            return True
+        else:
+            # logger.debug(f'Video {video} is already in the conversion queue')
+            return False
 
 def remove_video_from_conversion_queue(video: str) -> bool:
     """
@@ -291,14 +293,15 @@ def remove_video_from_conversion_queue(video: str) -> bool:
     Returns:
         bool: True if the video was removed, False if it was not found in the queue.
     """
-    global conversion_queue
-    if video in conversion_queue:
-        conversion_queue.pop(video, None)
-        # logger.info(f'Removed video {video} from conversion queue', 'convert_video')
-        return True
-    else:
-        # logger.debug(f'Video {video} is not in the conversion queue', 'convert_video')
-        return False
+    with logger.tags('convert_video'):
+        global conversion_queue
+        if video in conversion_queue:
+            conversion_queue.pop(video, None)
+            # logger.info(f'Removed video {video} from conversion queue')
+            return True
+        else:
+            # logger.debug(f'Video {video} is not in the conversion queue')
+            return False
 
 def is_video_in_conversion_queue(video: str) -> bool:
     """
@@ -332,10 +335,11 @@ def cleanup():
     Logs the items cleaned from each category.
     """
 
-    removed_counts = cache_manager.cleanup_expired_items()
-    if removed_counts:
-        for category, count in removed_counts.items():
-            logger.info(f'Cleaned {count} items from {category}', 'cleanup')
+    with logger.tags('cleanup'):
+        removed_counts = cache_manager.cleanup_expired_items()
+        if removed_counts:
+            for category, count in removed_counts.items():
+                logger.info(f'Cleaned {count} items from {category}')
 
 async def convert_videos():
     global active_tasks
@@ -359,45 +363,47 @@ async def convert_video_async(video):
     global converting_semaphore
     conversion_queue[video].status = True
     async with converting_semaphore:
-        logger.info('Start downloading', video)
+        with logger.tags(video):
+            logger.info('Start downloading')
 
-        try:
-            await ioloop.IOLoop.current().run_in_executor(None, download_youtube_audio, video)
-            logger.info('Successfully downloaded', video)
-        except Exception as ex:
-            errorType = UnavailableType.INTERNAL_ERROR
-            errorMessage = str(ex) or "Internal error"
+            try:
+                await ioloop.IOLoop.current().run_in_executor(None, download_youtube_audio, video)
+                logger.info('Successfully downloaded')
+            except Exception as ex:
+                errorType = UnavailableType.INTERNAL_ERROR
+                errorMessage = str(ex) or "Internal error"
 
-            if isinstance(ex, (
-                yt_dlp.utils.DownloadError,
-                yt_dlp.utils.ExtractorError,
-                PodtubeYoutubeError
-            )):
-                for pattern in ERROR_PATTERNS:
-                    if pattern.pattern.search(ex.msg):
-                        errorType = pattern.unavailable_type
-                        errorMessage = pattern.message
-                        break
+                if isinstance(ex, (
+                    yt_dlp.utils.DownloadError,
+                    yt_dlp.utils.ExtractorError,
+                    PodtubeYoutubeError
+                )):
+                    for pattern in ERROR_PATTERNS:
+                        if pattern.pattern.search(ex.msg):
+                            errorType = pattern.unavailable_type
+                            errorMessage = pattern.message
+                            break
 
-            logger.warning(f'Error converting file: {errorMessage}', video)
-            video_link_cache:VideoLinkCacheItem = cache_manager.get_or_add(
-                VIEDO_LINKS_CACHE_NAME,
-                video,
-                lambda: VideoLinkCacheItem(None, datetime.datetime.now() + datetime.timedelta(hours=1))
-            )
-            video_link_cache.unavailable_type = errorType
+                logger.warning(f'Error converting file: {errorMessage}')
+                video_link_cache:VideoLinkCacheItem = cache_manager.get_or_add(
+                    VIEDO_LINKS_CACHE_NAME,
+                    video,
+                    lambda: VideoLinkCacheItem(None, datetime.datetime.now() + datetime.timedelta(hours=1))
+                )
+                video_link_cache.unavailable_type = errorType
 
-            if errorType == UnavailableType.INTERNAL_ERROR:
-                raise
-        finally:
-            conversion_queue.pop(video, None)
+                if errorType == UnavailableType.INTERNAL_ERROR:
+                    raise
+            finally:
+                conversion_queue.pop(video, None)
 
 def _on_task_done(task:asyncio.Task):
-    active_tasks.discard(task)
-    try:
-        task.result()
-    except Exception as e:
-        logger.error(f'Unhandled error in task: {e}', 'convert_video', e, logger.isEnabledFor(logging.DEBUG))
+    with logger.tags('convert_video'):
+        active_tasks.discard(task)
+        try:
+            task.result()
+        except Exception as e:
+            logger.error(f'Unhandled error in task: {e}', exc_info=e, stack_info=logger.isEnabledFor(logging.DEBUG))
 
 class LoggerForYoutubeDL:
     _progress_re = re.compile(
@@ -411,9 +417,7 @@ class LoggerForYoutubeDL:
         re.VERBOSE
     )
 
-    def __init__(self, log_tags, progress_interval=1.0, progress_filter_enabled=True):
-        self.log_tags = log_tags
-
+    def __init__(self, progress_interval=1.0, progress_filter_enabled=True):
         self.progress_interval = progress_interval
         self.progress_filter_enabled = progress_filter_enabled
 
@@ -423,11 +427,11 @@ class LoggerForYoutubeDL:
 
         self._seen_100_percent = False
 
-    def debug(self, msg):
+    def debug(self, msg: str):
         # For compatibility with youtube-dl, both debug and info are passed into debug
         # You can distinguish them by the prefix '[debug] '
         if msg.startswith('[debug] '):
-            logger.debug(msg, self.log_tags)
+            logger.debug(msg)
         else:
             self.info(msg)
 
@@ -435,13 +439,13 @@ class LoggerForYoutubeDL:
         if self._handle_progress_message(msg):
             return
 
-        logger.info(msg, self.log_tags)
+        logger.info(msg)
 
     def warning(self, msg):
-        logger.warning(msg, self.log_tags)
+        logger.warning(msg)
 
     def error(self, msg):
-        logger.error(msg, self.log_tags)
+        logger.error(msg)
 
     def _handle_progress_message(self, msg):
         if not self.progress_filter_enabled:
@@ -472,7 +476,7 @@ class LoggerForYoutubeDL:
                 self._progress_timer = None
 
             if self._pending_progress_msg is not None:
-                logger.info(self._pending_progress_msg, self.log_tags)
+                logger.info(self._pending_progress_msg)
                 self._pending_progress_msg = None
 
             if restart_timer:
@@ -510,105 +514,104 @@ def download_youtube_audio(video: str):
     Args:
         video (str): Youtube video's key.
     """
-    log_tags = [video]
-    video_queue_item = conversion_queue[video]
-    yturl = get_youtube_url(video)
-    logger.debug(f"Full URL: {yturl}", log_tags)
-    additional_data = video_queue_item.additional_data or {}
+    with logger.tags(video) as log_scope:
+        video_queue_item = conversion_queue[video]
+        yturl = get_youtube_url(video)
+        logger.debug(f"Full URL: {yturl}")
+        additional_data = video_queue_item.additional_data or {}
 
-    # audio_file = f'{AUDIO_DIR}/{video}.mp3'
-    # audio_file_temp = audio_file + '.temp'
-    # video_file = None
+        # audio_file = f'{AUDIO_DIR}/{video}.mp3'
+        # audio_file_temp = audio_file + '.temp'
+        # video_file = None
 
-    Path(youtube.utils.config_utils.AUDIO_DIR).mkdir(parents=True, exist_ok=True)
-    logger.debug('Start downloading audio stream', log_tags)
+        Path(youtube.utils.config_utils.AUDIO_DIR).mkdir(parents=True, exist_ok=True)
+        logger.debug('Start downloading audio stream')
 
-    def progress_hook(info):
-        status = info['status']
-        logger.debug(f'Downloading audio. Status {status}. {info=}\n\n', log_tags)
+        def progress_hook(info):
+            status = info['status']
+            logger.debug(f'Downloading audio. Status {status}. {info=}\n\n')
 
-    ytdlp_params = {
-        'paths': {
-            'home': f'{youtube.utils.config_utils.AUDIO_DIR}',
-            'temp': f'tmp'
-        },
-        'outtmpl': {
-            'home': f'{video}',
-            'temp': f'{video}'
-        },
-        'verbose': logger.isEnabledFor(logging.DEBUG),
-        'format': 'm4a/bestaudio/best',
-        'postprocessors': [{  # Extract audio using ffmpeg
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-        }],
-        'logger': LoggerForYoutubeDL(log_tags, progress_interval=5),
-        # 'progress_hooks': [progress_hook],
-        'extractor_args': {
-            'youtube': {
-                'lang': [(video_queue_item.additional_data or {}).get('hl', youtube.utils.config_utils.HL)],
-            }
-        },
-        'extractor_retries': 1,
-    }
+        ytdlp_params = {
+            'paths': {
+                'home': f'{youtube.utils.config_utils.AUDIO_DIR}',
+                'temp': f'tmp'
+            },
+            'outtmpl': {
+                'home': f'{video}',
+                'temp': f'{video}'
+            },
+            'verbose': logger.isEnabledFor(logging.DEBUG),
+            'format': 'm4a/bestaudio/best',
+            'postprocessors': [{  # Extract audio using ffmpeg
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+            }],
+            'logger': LoggerForYoutubeDL(progress_interval=5),
+            # 'progress_hooks': [progress_hook],
+            'extractor_args': {
+                'youtube': {
+                    'lang': [(video_queue_item.additional_data or {}).get('hl', youtube.utils.config_utils.HL)],
+                }
+            },
+            'extractor_retries': 1,
+        }
 
-    if youtube.utils.config_utils.HTTPS_PROXY is not None:
-        ytdlp_params['proxy'] = youtube.utils.config_utils.HTTPS_PROXY,
+        if youtube.utils.config_utils.HTTPS_PROXY is not None:
+            ytdlp_params['proxy'] = youtube.utils.config_utils.HTTPS_PROXY,
 
-    if youtube.utils.config_utils.COOKIES_FILE_PATH is not None:
-        ytdlp_params['cookiefile'] = youtube.utils.config_utils.COOKIES_FILE_PATH,
+        if youtube.utils.config_utils.COOKIES_FILE_PATH is not None:
+            ytdlp_params['cookiefile'] = youtube.utils.config_utils.COOKIES_FILE_PATH,
 
-    start_time = additional_data.get("start_time", None)
-    end_time = additional_data.get("end_time", None)
-    if start_time is not None or end_time is not None:
-        start_time = float(start_time) if start_time is not None else 0
-        end_time = float(end_time) if end_time is not None else float("inf")
-        download_ranges = yt_dlp.download_range_func(
-            [],
-            [[start_time, end_time]]
+        start_time = additional_data.get("start_time", None)
+        end_time = additional_data.get("end_time", None)
+        if start_time is not None or end_time is not None:
+            start_time = float(start_time) if start_time is not None else 0
+            end_time = float(end_time) if end_time is not None else float("inf")
+            download_ranges = yt_dlp.download_range_func(
+                [],
+                [[start_time, end_time]]
+            )
+
+            ytdlp_params['download_ranges'] = download_ranges
+
+        if youtube.utils.config_utils.FFMPEG_LIVE_LOGS:
+            ppa: dict[list[str]] = ytdlp_params.setdefault('postprocessor_args', {})
+            ffmpeg_args: list[str] = ppa.setdefault('ffmpeg', [])
+            ffmpeg_args.extend(['-progress', 'pipe:2', '-nostats'])
+
+        # This setup allows capturing logs from external tools (e.g. ffmpeg)
+        # that write directly to sys.stderr or sys.stdout, and redirecting them to the Python logger.
+        audio_name = None
+        with (
+            redirect_std_streams(logger),
+            ytdlp_ffmpeg_live_logs_context(youtube.utils.config_utils.FFMPEG_LIVE_LOGS),
+            yt_dlp.YoutubeDL(ytdlp_params) as ydl
+        ):
+            info = ydl.extract_info(yturl, download=False, process=False)
+            if (info.get('live_status', None) in ['is_live', 'is_upcoming', 'is_premiere']):
+                raise PodtubeYoutubeError(f'Video is Live Stream or Premiere: {video}')
+
+            audio_name = info.get('title', None)
+            if logger.isEnabledFor(logging.DEBUG):
+                log_scope.add(
+                    info.get('title',''),
+                    info.get('channel_id',''),
+                    info.get('channel',''),
+                )
+            ydl.params['mark_watched'] = (video_queue_item.additional_data or {}).get('mark_watched', youtube.utils.config_utils.MARK_WATCHED)
+
+            ydl.download([yturl])
+
+        logger.debug('Successfully downloaded audio')
+
+        file_path = get_audio_file_path(video)
+        cache_item = AudioFileCacheItem(file_path)
+        cache_item.name = audio_name
+        cache_manager.set(
+            AUDIO_FILES_CACHE_NAME,
+            os.path.basename(file_path),
+            cache_item
         )
-
-        ytdlp_params['download_ranges'] = download_ranges
-
-    if youtube.utils.config_utils.FFMPEG_LIVE_LOGS:
-        ppa: dict[list[str]] = ytdlp_params.setdefault('postprocessor_args', {})
-        ffmpeg_args: list[str] = ppa.setdefault('ffmpeg', [])
-        ffmpeg_args.extend(['-progress', 'pipe:2', '-nostats'])
-
-    # This setup allows capturing logs from external tools (e.g. ffmpeg)
-    # that write directly to sys.stderr or sys.stdout, and redirecting them to the Python logger.
-    audio_name = None
-    with (
-        redirect_std_streams(logger),
-        ytdlp_ffmpeg_live_logs_context(youtube.utils.config_utils.FFMPEG_LIVE_LOGS),
-        yt_dlp.YoutubeDL(ytdlp_params) as ydl
-    ):
-        info = ydl.extract_info(yturl, download=False, process=False)
-        if (info.get('live_status', None) in ['is_live', 'is_upcoming', 'is_premiere']):
-            raise PodtubeYoutubeError(f'Video is Live Stream or Premiere: {video}')
-
-        audio_name = info.get('title', None)
-        if logger.isEnabledFor(logging.DEBUG):
-            log_tags[:] = [
-                video,
-                info.get('title',''),
-                info.get('channel_id',''),
-                info.get('channel',''),
-            ]
-        ydl.params['mark_watched'] = (video_queue_item.additional_data or {}).get('mark_watched', youtube.utils.config_utils.MARK_WATCHED)
-
-        ydl.download([yturl])
-
-    logger.debug('Successfully downloaded audio', log_tags)
-
-    file_path = get_audio_file_path(video)
-    cache_item = AudioFileCacheItem(file_path)
-    cache_item.name = audio_name
-    cache_manager.set(
-        AUDIO_FILES_CACHE_NAME,
-        os.path.basename(file_path),
-        cache_item
-    )
 
 def get_youtube_url(video: str) -> str:
     """

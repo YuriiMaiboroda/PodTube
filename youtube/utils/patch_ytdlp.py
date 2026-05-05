@@ -292,8 +292,6 @@ def patch_ytdlp_ffmpeg_live_logs():
             yield
 
 def ytdlp_ffmpeg_live_logs_context(enabled: bool):
-    return (
-        patch_ytdlp_ffmpeg_live_logs()
-        if enabled
-        else contextlib.nullcontext()
-    )
+    if not enabled:
+        return contextlib.nullcontext()
+    return patch_ytdlp_ffmpeg_live_logs()
